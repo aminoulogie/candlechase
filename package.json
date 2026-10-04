@@ -1,0 +1,43 @@
+{
+  "name": "candlechase",
+  "version": "1.0.0",
+  "description": "Train the 4 trading systems on real market history",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "data:fetch": "tsx scripts/fetch-data.ts",
+    "data:build": "tsx scripts/build-data.ts",
+    "data:synthetic": "tsx scripts/synthetic.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aminoulogie/candlechase.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aminoulogie/candlechase/issues"
+  },
+  "homepage": "https://github.com/aminoulogie/candlechase#readme",
+  "dependencies": {
+    "lightweight-charts": "^5.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "dukascopy-node": "^1.50.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  },
+  "private": true,
+  "type": "module"
+}

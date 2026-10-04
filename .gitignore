@@ -1,0 +1,7 @@
+node_modules
+dist
+data/raw
+data/raw-synthetic
+.dukascopy-cache
+*.log
+.DS_Store

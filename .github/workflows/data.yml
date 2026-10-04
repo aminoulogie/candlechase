@@ -1,0 +1,46 @@
+name: Refresh market data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 2 * *' # monthly, 2nd at 04:17 UTC
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data
+  cancel-in-progress: false
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Restore downloaded candles
+        uses: actions/cache@v4
+        with:
+          path: .dukascopy-cache
+          key: dukascopy-${{ github.run_id }}
+          restore-keys: dukascopy-
+      - name: Download M15 candles (EURUSD, Gold, NAS100)
+        run: npm run data:fetch
+      - name: Find setups and backtest
+        run: npm run data:build
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          if git diff --cached --quiet; then
+            echo "No data changes"
+          else
+            git commit -m "Refresh market data"
+            git push
+          fi
