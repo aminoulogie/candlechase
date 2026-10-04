@@ -23,7 +23,7 @@ async function fetchRange(source: string, from: string, to: string): Promise<num
     pauseBetweenBatchesMs: 300,
     retryCount: 4,
     pauseBetweenRetriesMs: 1500,
-    retryOnEmpty: true,
+    retryOnEmpty: false,
     failAfterRetryCount: true,
     useCache: true,
     cacheFolderPath: '.dukascopy-cache',
