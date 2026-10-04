@@ -24,13 +24,19 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Restore downloaded candles
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .dukascopy-cache
           key: dukascopy-${{ github.run_id }}
           restore-keys: dukascopy-
       - name: Download M15 candles (EURUSD, Gold, NAS100)
         run: npm run data:fetch
+      - name: Save downloaded candles (even on failure, so a re-run resumes)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .dukascopy-cache
+          key: dukascopy-${{ github.run_id }}
       - name: Find setups and backtest
         run: npm run data:build
       - name: Commit data

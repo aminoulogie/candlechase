@@ -19,10 +19,10 @@ async function fetchRange(source: string, from: string, to: string): Promise<num
     format: 'array',
     volumes: false,
     ignoreFlats: true,
-    batchSize: 15,
-    pauseBetweenBatchesMs: 300,
-    retryCount: 4,
-    pauseBetweenRetriesMs: 1500,
+    batchSize: 4,
+    pauseBetweenBatchesMs: 1200,
+    retryCount: 6,
+    pauseBetweenRetriesMs: 8000,
     retryOnEmpty: false,
     failAfterRetryCount: true,
     useCache: true,
@@ -52,7 +52,18 @@ async function main() {
     const all: number[][] = [];
     for (const [a, b] of yearSlices(FROM, TO)) {
       const started = Date.now();
-      const rows = await fetchRange(meta.source, a, b);
+      let rows: number[][] = [];
+      for (let attempt = 1; ; attempt++) {
+        try {
+          rows = await fetchRange(meta.source, a, b);
+          break;
+        } catch (e) {
+          // Rate limited: back off and try the slice again (downloaded days are cached).
+          if (attempt >= 6) throw e;
+          console.log(`${id} ${a}..${b}: ${(e as Error).message}, waiting ${attempt * 30}s`);
+          await new Promise((r) => setTimeout(r, attempt * 30_000));
+        }
+      }
       console.log(`${id} ${a}..${b}: ${rows.length} candles in ${((Date.now() - started) / 1000).toFixed(0)}s`);
       all.push(...rows);
     }
