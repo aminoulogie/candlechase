@@ -13,9 +13,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  data:
+  fetch:
+    # One small job per market and year: each runner stays under Dukascopy's rate limit.
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        instrument: [eurusd, xauusd, nas100]
+        year: [2021, 2022, 2023, 2024, 2025, 2026]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,20 +30,42 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Restore downloaded candles
-        uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v4
         with:
           path: .dukascopy-cache
-          key: dukascopy-${{ github.run_id }}
-          restore-keys: dukascopy-
-      - name: Download M15 candles (EURUSD, Gold, NAS100)
-        run: npm run data:fetch
-      - name: Save downloaded candles (even on failure, so a re-run resumes)
-        if: always()
+          key: duka-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}
+          restore-keys: duka-${{ matrix.instrument }}-${{ matrix.year }}-
+      - run: npx tsx scripts/fetch-data.ts ${{ matrix.instrument }} ${{ matrix.year }}
+      - if: always()
         uses: actions/cache/save@v4
         with:
           path: .dukascopy-cache
-          key: dukascopy-${{ github.run_id }}
+          key: duka-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-${{ matrix.instrument }}-${{ matrix.year }}
+          path: data/raw/parts/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  build:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: data/raw/parts
+          merge-multiple: true
+      - name: Merge years
+        run: npx tsx scripts/fetch-data.ts --merge
       - name: Find setups and backtest
         run: npm run data:build
       - name: Commit data
@@ -48,5 +77,6 @@ jobs:
             echo "No data changes"
           else
             git commit -m "Refresh market data"
-            git push
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
