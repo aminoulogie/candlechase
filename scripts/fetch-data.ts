@@ -52,7 +52,8 @@ async function fetchYear(id: InstrumentId, year: number) {
         console.log(`${id} ${from}..${to}: ${rows.length} candles`);
         break;
       } catch (e) {
-        if (attempt >= 6) throw e;
+        // A blocked runner stays blocked; fail fast so a re-run lands on a fresh one (finished months are kept).
+        if (attempt >= 3) throw e;
         console.log(`${id} ${from}: ${(e as Error).message}, waiting ${attempt * 60}s`);
         await new Promise((r) => setTimeout(r, attempt * 60_000));
       }
