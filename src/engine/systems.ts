@@ -86,7 +86,7 @@ export const SYSTEMS: Record<SystemId, SystemDef> = {
         id: 'void',
         title: 'No candle has closed through EMA50 against the trend',
         sub: 'That is the void condition. If it has happened, the trend is not yours any more.',
-        precise: 'No close below EMA50 (above, to sell) in the last 20 candles.',
+        precise: 'No close below EMA50 (above, to sell) in the last 40 candles — 10 hours of M15.',
         kind: 'chart',
       },
       LIVE_CLOSED,

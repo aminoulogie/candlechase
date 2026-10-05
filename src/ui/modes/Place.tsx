@@ -7,7 +7,7 @@ import { LOTS, money, pnl, riskMoney } from '../../game/account';
 import { getState, lossLimitHit, recordAttempt, recordTrade, useGame } from '../../game/store';
 import { Chart } from '../Chart';
 import type { PriceMark } from '../Chart';
-import { Breakdown, dirName, Loading, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, useFocus, dirName, Loading, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { cssVar, revealOverlays } from '../overlays';
 import { LimitHit } from './LimitHit';
 import { RoundEnd } from './RoundEnd';
@@ -112,6 +112,7 @@ function PlaceOne({ d, step, total, onExit, onNext }: { d: Drill; step: number; 
     }
     return out;
   }, [ld, e, entry, stop, target, result]);
+  const [focus, onFocus] = useFocus();
   const marks = useMemo(() => (ld && e && result ? revealOverlays(e, null, false).marks : []), [ld, e, result]);
 
   const fmt = (p: number | null) => (p === null ? '—' : p.toFixed(digits));
@@ -120,7 +121,7 @@ function PlaceOne({ d, step, total, onExit, onNext }: { d: Drill; step: number; 
     <div className="drill">
       <TopBar title="Place it" step={step} total={total} onExit={onExit} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={digits} showDate={!!result} lines={lines} marks={marks} onTapPrice={tap} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={digits} showDate={!!result} lines={lines} marks={marks} focus={focus} onTapPrice={tap} /> : <Loading />}
         <div className="chart-label">{result && ld ? revealLabel(ld.w) : 'Tap the chart to place your lines'}</div>
       </div>
       <div className="panel" key={result ? 'after' : 'before'}>
@@ -167,7 +168,7 @@ function PlaceOne({ d, step, total, onExit, onNext }: { d: Drill; step: number; 
                 </li>
               ))}
             </ul>
-            {e ? <Breakdown e={e} /> : null}
+            {e && ld ? <Breakdown e={e} w={ld.w} wrong={!result.ok} onFocus={onFocus} /> : null}
             <button className="btn primary wide" onClick={() => onNext(result.ok, result.xp)}>Next</button>
           </>
         )}

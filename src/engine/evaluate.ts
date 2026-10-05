@@ -6,6 +6,11 @@ const H = 3600;
 
 const utcHour = (t: number) => ((t % DAY) + DAY) % DAY / H;
 
+/** How far back the EMA Pullback void rule looks: 40 M15 candles = 10 hours. */
+export const EMA_VOID_LOOKBACK = 40;
+
+type Info = Record<string, number | number[]>;
+
 function finish(
   sys: SystemId,
   dir: Dir,
@@ -15,6 +20,7 @@ function finish(
   entry: number,
   stop: number,
   marks: Marks,
+  info: Info,
 ): Evaluation {
   const failed = Object.keys(pass).filter((k) => !pass[k]);
   const risk = Math.abs(entry - stop);
@@ -30,6 +36,7 @@ function finish(
     stop,
     target: entry + dir * 2 * risk,
     marks,
+    info,
   };
 }
 
@@ -42,31 +49,52 @@ function ready(s: Series, i: number): boolean {
   return i >= 210 && i < s.c.length && !Number.isNaN(s.ema200[i]) && !Number.isNaN(s.atr[i]) && !Number.isNaN(s.rsi[i]);
 }
 
+const inHours = (s: Series, i: number) => {
+  const hr = utcHour(s.t[i]);
+  return hr >= 7 && hr < 20;
+};
+
 // ---------------------------------------------------------------- EMA Pullback
 
 export function evalEma(s: Series, i: number, dir: Dir): Evaluation {
   const d = dir;
   const a = s.atr[i];
   const pass: Record<string, boolean> = {};
+  const info: Info = {};
 
   pass.trend = d * (s.ema20[i] - s.ema50[i]) > 0 && d * (s.ema20[i] - s.ema20[i - 5]) > 0 && d * (s.ema50[i] - s.ema50[i - 5]) > 0;
 
-  let left = false;
-  for (let j = i - 10; j < i; j++) if (d * (s.c[j] - s.ema20[j]) >= s.atr[j]) left = true;
-  pass.pullback = left;
+  // furthest close from EMA20 (in ATR, in the trade's direction) over the 10 candles before
+  let far = -Infinity;
+  let farAt = i - 1;
+  for (let j = i - 10; j < i; j++) {
+    const x = (d * (s.c[j] - s.ema20[j])) / s.atr[j];
+    if (x > far) {
+      far = x;
+      farAt = j;
+    }
+  }
+  pass.pullback = far >= 1;
+  info.far = far;
+  info.farAt = farAt;
 
   const touch = d === 1 ? s.l[i] <= s.ema20[i] + 0.2 * a : s.h[i] >= s.ema20[i] - 0.2 * a;
   const closeBack = d * (s.c[i] - s.o[i]) > 0 && d * (s.c[i] - s.ema20[i]) > 0 && d * (s.rsi[i] - 50) > 0;
   pass.trigger = touch && closeBack;
 
-  let voided = false;
-  for (let j = i - 20; j <= i; j++) if (d * (s.c[j] - s.ema50[j]) < 0) voided = true;
-  pass.void = !voided;
+  const against: number[] = [];
+  for (let j = i - EMA_VOID_LOOKBACK + 1; j <= i; j++) if (d * (s.c[j] - s.ema50[j]) < 0) against.push(j);
+  pass.void = against.length === 0;
+  info.against = against;
 
-  pass.opposite = !recentDivergence(s, i, -d as Dir, 15);
+  const div = recentDivergenceAt(s, i, -d as Dir, 15);
+  pass.opposite = div === null;
+  if (div) {
+    info.divA = div.j1;
+    info.divB = div.j2;
+  }
   pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
-  const hr = utcHour(s.t[i]);
-  pass.hours = hr >= 7 && hr < 20;
+  pass.hours = inHours(s, i);
 
   let ext = d === 1 ? Infinity : -Infinity;
   let extI = i;
@@ -80,10 +108,9 @@ export function evalEma(s: Series, i: number, dir: Dir): Evaluation {
   const entry = s.c[i];
   const stop = ext - d * 0.1 * a;
   pass.stop = stopFits(s, i, entry, stop, d);
+  info.extAt = extI;
 
-  return finish('ema', d, i, pass.trigger, pass, entry, stop, {
-    points: [{ i: extI, label: 'Pullback', above: d === -1 }],
-  });
+  return finish('ema', d, i, pass.trigger, pass, entry, stop, { points: [{ i: extI, label: 'Pullback', above: d === -1 }] }, info);
 }
 
 // ---------------------------------------------------------------- S/R Retest
@@ -108,11 +135,12 @@ export function evalSr(s: Series, i: number, dir: Dir): Evaluation {
   const d = dir;
   const a = s.atr[i];
   const pass: Record<string, boolean> = {};
+  const info: Info = {};
   const sw = swingsIn(s, i - 300, i - 5);
   const tol = 0.3 * a;
   const green = d * (s.c[i] - s.o[i]) > 0;
 
-  // Pick the level this candle is testing: the one it touched and closed away from, with the most touches.
+  // The level this candle is testing: the one it touched and closed away from, with the most touches.
   let L = NaN;
   let best = -1;
   let bestJ = -1;
@@ -136,14 +164,15 @@ export function evalSr(s: Series, i: number, dir: Dir): Evaluation {
     pass.trigger = false;
     pass.void = true;
     pass.room = true;
-    const hr = utcHour(s.t[i]);
-    pass.hours = hr >= 7 && hr < 20;
+    pass.hours = inHours(s, i);
     pass.stop = false;
-    return finish('sr', d, i, false, pass, entry, entry - d * a, {});
+    return finish('sr', d, i, false, pass, entry, entry - d * a, {}, info);
   }
 
   pass.level = best >= 2;
   pass.trigger = green;
+  info.level = L;
+  info.touches = touchesNear(sw, L, tol).map((x) => x.j);
 
   // Most recent close that crossed the level by 0.3 ATR, coming from the other side.
   let b = -1;
@@ -159,28 +188,30 @@ export function evalSr(s: Series, i: number, dir: Dir): Evaluation {
     }
   }
   pass.break = b >= 0;
+  if (b >= 0) info.breakAt = b;
 
-  let voided = false;
-  if (b >= 0) for (let j = b + 1; j < i; j++) if (d * (s.c[j] - L) < -0.3 * s.atr[j]) voided = true;
-  pass.void = !voided;
+  const back: number[] = [];
+  if (b >= 0) for (let j = b + 1; j < i; j++) if (d * (s.c[j] - L) < -0.3 * s.atr[j]) back.push(j);
+  pass.void = back.length === 0;
+  info.back = back;
 
   const stop = d === 1 ? Math.min(L - 0.3 * a, s.l[i] - 0.1 * a) : Math.max(L + 0.3 * a, s.h[i] + 0.1 * a);
   const target = entry + d * 2 * Math.abs(entry - stop);
-  let blocked = false;
+  let wall = NaN;
   for (const x of sw) {
     if (Math.abs(x.p - L) <= tol) continue;
     const between = d * (x.p - entry) > 0.2 * a && d * (target - x.p) > 0;
-    if (between && touchesNear(sw, x.p, tol).length >= 2) blocked = true;
+    if (between && touchesNear(sw, x.p, tol).length >= 2) wall = x.p;
   }
-  pass.room = !blocked;
+  pass.room = Number.isNaN(wall);
+  if (!pass.room) info.wall = wall;
 
-  const hr = utcHour(s.t[i]);
-  pass.hours = hr >= 7 && hr < 20;
+  pass.hours = inHours(s, i);
   pass.stop = stopFits(s, i, entry, stop, d);
 
   const points: Marks['points'] = touchesNear(sw, L, tol).map((x) => ({ i: x.j, label: 'Touch', above: s.h[x.j] === x.p }));
   if (b >= 0) points.push({ i: b, label: 'Break', above: d === 1 });
-  return finish('sr', d, i, true, pass, entry, stop, { level: L, points });
+  return finish('sr', d, i, true, pass, entry, stop, { level: L, points }, info);
 }
 
 // ---------------------------------------------------------------- RSI Divergence
@@ -217,55 +248,69 @@ function divergenceAt(s: Series, j2: number, d: Dir): { div: Div | null; found: 
 }
 
 /** A divergence (with an oversold/overbought first swing) completed in the last `look` candles. */
-export function recentDivergence(s: Series, i: number, d: Dir, look: number): boolean {
+function recentDivergenceAt(s: Series, i: number, d: Dir, look: number): Div | null {
   const piv = d === 1 ? s.pl2 : s.ph2;
   for (let j2 = i - 2; j2 >= i - look; j2--) {
     if (!piv[j2]) continue;
     const { div } = divergenceAt(s, j2, d);
-    if (div && (d === 1 ? div.r1 < 35 : div.r1 > 65)) return true;
+    if (div && (d === 1 ? div.r1 < 35 : div.r1 > 65)) return div;
   }
-  return false;
+  return null;
+}
+
+export function recentDivergence(s: Series, i: number, d: Dir, look: number): boolean {
+  return recentDivergenceAt(s, i, d, look) !== null;
 }
 
 export function evalRsi(s: Series, i: number, dir: Dir): Evaluation {
   const d = dir;
   const a = s.atr[i];
   const pass: Record<string, boolean> = {};
+  const info: Info = {};
   const piv = d === 1 ? s.pl2 : s.ph2;
   const px = d === 1 ? s.l : s.h;
   const opp = d === 1 ? s.h : s.l;
 
   let j2 = -1;
-  for (let j = i - 2; j >= i - 6; j--) if (piv[j]) {
-    j2 = j;
-    break;
-  }
+  for (let j = i - 2; j >= i - 6; j--)
+    if (piv[j]) {
+      j2 = j;
+      break;
+    }
   const entry = s.c[i];
-  const hr = utcHour(s.t[i]);
   if (j2 < 0) {
     pass.diverge = false;
     pass.extreme = false;
     pass.trigger = false;
     pass.void = true;
     pass.steam = true;
-    pass.hours = hr >= 7 && hr < 20;
+    pass.hours = inHours(s, i);
     pass.stop = false;
-    return finish('rsi', d, i, false, pass, entry, entry - d * a, {});
+    return finish('rsi', d, i, false, pass, entry, entry - d * a, {}, info);
   }
+  info.j2 = j2;
 
-  let firstClose = true;
-  for (let m = j2 + 1; m < i; m++) if (d * (s.c[m] - opp[j2]) > 0) firstClose = false;
-  pass.trigger = d * (s.c[i] - opp[j2]) > 0 && d * (s.c[i] - s.o[i]) > 0 && firstClose;
+  let earlier = -1;
+  for (let m = j2 + 1; m < i; m++) if (d * (s.c[m] - opp[j2]) > 0 && earlier < 0) earlier = m;
+  pass.trigger = d * (s.c[i] - opp[j2]) > 0 && d * (s.c[i] - s.o[i]) > 0 && earlier < 0;
+  if (earlier >= 0) info.earlier = earlier;
 
   const { div, found } = divergenceAt(s, j2, d);
   pass.diverge = div !== null;
   pass.extreme = found !== null && (d === 1 ? found.r1 < 35 : found.r1 > 65);
+  if (found) {
+    info.j1 = found.j1;
+    info.r1 = found.r1;
+    info.r2 = found.r2;
+  }
 
-  let newExtreme = false;
-  for (let m = j2 + 1; m <= i; m++) if (d * (px[m] - px[j2]) < 0) newExtreme = true;
-  pass.void = !newExtreme;
-  pass.steam = Math.abs(s.ema20[i] - s.ema20[i - 10]) < 1.5 * a;
-  pass.hours = hr >= 7 && hr < 20;
+  let newExtreme = -1;
+  for (let m = j2 + 1; m <= i; m++) if (d * (px[m] - px[j2]) < 0 && newExtreme < 0) newExtreme = m;
+  pass.void = newExtreme < 0;
+  if (newExtreme >= 0) info.newExtreme = newExtreme;
+  info.slope = Math.abs(s.ema20[i] - s.ema20[i - 10]) / a;
+  pass.steam = (info.slope as number) < 1.5;
+  pass.hours = inHours(s, i);
 
   const stop = px[j2] - d * 0.2 * a;
   pass.stop = stopFits(s, i, entry, stop, d);
@@ -276,7 +321,7 @@ export function evalRsi(s: Series, i: number, dir: Dir): Evaluation {
     marks.priceLine = [found.j1, j2];
     marks.rsiLine = [found.j1, j2];
   }
-  return finish('rsi', d, i, pass.trigger, pass, entry, stop, marks);
+  return finish('rsi', d, i, pass.trigger, pass, entry, stop, marks, info);
 }
 
 // ---------------------------------------------------------------- Session Breakout
@@ -304,6 +349,7 @@ export function evalSession(s: Series, i: number, dir: Dir): Evaluation {
   const d = dir;
   const a = s.atr[i];
   const pass: Record<string, boolean> = {};
+  const info: Info = {};
   const t = s.t[i];
   const dayStart = Math.floor(t / DAY) * DAY;
   const hr = (t - dayStart) / H;
@@ -318,7 +364,7 @@ export function evalSession(s: Series, i: number, dir: Dir): Evaluation {
     pass.body = true;
     pass.htf = true;
     pass.stop = false;
-    return finish('session', d, i, false, pass, entry, entry - d * a, {});
+    return finish('session', d, i, false, pass, entry, entry - d * a, {}, info);
   }
 
   const edge = d === 1 ? range.hi : range.lo;
@@ -344,26 +390,35 @@ export function evalSession(s: Series, i: number, dir: Dir): Evaluation {
   const height = range.hi - range.lo;
   const avg = days >= 5 ? sum / days : NaN;
   pass.tight = !Number.isNaN(avg) && height >= 0.5 * avg && height <= 1.3 * avg;
+  info.height = height;
+  if (!Number.isNaN(avg)) info.avg = avg;
 
-  let first = true;
+  let earlier = -1;
   for (let m = range.to + 1; m < i; m++) {
-    if (s.c[m] - range.hi >= 0.1 * s.atr[m] || range.lo - s.c[m] >= 0.1 * s.atr[m]) first = false;
+    if ((s.c[m] - range.hi >= 0.1 * s.atr[m] || range.lo - s.c[m] >= 0.1 * s.atr[m]) && earlier < 0) earlier = m;
   }
-  pass.first = first;
+  pass.first = earlier < 0;
+  if (earlier >= 0) info.earlier = earlier;
 
   const span = s.h[i] - s.l[i];
+  info.body = span > 0 ? Math.abs(s.c[i] - s.o[i]) / span : 0;
   pass.body = span > 0 && d * (s.c[i] - s.o[i]) >= 0.5 * span;
   pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
 
   const stop = (range.hi + range.lo) / 2;
   pass.stop = stopFits(s, i, entry, stop, d);
 
-  return finish('session', d, i, pass.trigger, pass, entry, stop, {
-    rangeHigh: range.hi,
-    rangeLow: range.lo,
-    rangeFrom: range.from,
-    rangeTo: range.to,
-  });
+  return finish(
+    'session',
+    d,
+    i,
+    pass.trigger,
+    pass,
+    entry,
+    stop,
+    { rangeHigh: range.hi, rangeLow: range.lo, rangeFrom: range.from, rangeTo: range.to },
+    info,
+  );
 }
 
 // ----------------------------------------------------------------

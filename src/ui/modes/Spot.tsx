@@ -5,7 +5,7 @@ import type { SystemId } from '../../engine/types';
 import { timerFor, unlockedSystems } from '../../game/progress';
 import { getState, recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, dirName, Loading, nearestAt, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, useFocus, dirName, Loading, nearestAt, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -63,6 +63,7 @@ function SpotOne({ d, title, step, total, onExit, onNext }: { d: Drill; title: s
 
   const end = ld ? Math.min(ld.w.s.c.length - 1, ld.out ? ld.out.exitIndex + 6 : ld.w.li + 40) : 0;
   const upto = usePlayForward(ld?.w.li ?? 0, end, revealed);
+  const [focus, onFocus] = useFocus();
   const ov = useMemo(() => (revealed && ld ? revealOverlays(ld.e, ld.out, d.k === 'v' || d.k === 'n') : null), [revealed, ld, d.k]);
   const nearest = useMemo(() => (revealed && ld && d.k === 'z' ? nearestAt(ld.w, ld.w.li) : null), [revealed, ld, d.k]);
 
@@ -90,7 +91,7 @@ function SpotOne({ d, title, step, total, onExit, onNext }: { d: Drill; title: s
       />
       <div className="chart-wrap">
         {ld ? (
-          <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} />
+          <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} />
         ) : (
           <Loading />
         )}
@@ -132,7 +133,7 @@ function SpotOne({ d, title, step, total, onExit, onNext }: { d: Drill; title: s
               <p className="note">It would have won anyway. A win that broke a rule is luck you can’t repeat — it still counts as a mistake.</p>
             ) : null}
             {ld?.e ? <OutcomeLine out={ld.out} prefix={d.k === 'v' ? 'Taken, this trade' : 'Had you taken it, it'} /> : null}
-            {ld?.e ? <Breakdown e={ld.e} /> : null}
+            {ld?.e ? <Breakdown e={ld.e} w={ld.w} wrong={!ok} onFocus={onFocus} /> : null}
             {d.k === 'z' ? (
               <p className="note">
                 {nearest

@@ -8,7 +8,7 @@ import { unlockedSystems } from '../../game/progress';
 import { getState, lossLimitHit, recordAttempt, recordTrade } from '../../game/store';
 import { Chart } from '../Chart';
 import type { BarMark } from '../Chart';
-import { bestAt, Breakdown, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { bestAt, Breakdown, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { cssVar, revealOverlays } from '../overlays';
 import { LimitHit } from './LimitHit';
 import { RoundEnd } from './RoundEnd';
@@ -106,6 +106,7 @@ function ReplayOne({ d, step, total, onExit, onNext }: { d: Drill; step: number;
   const end = ld ? Math.min(ld.w.s.c.length - 1, res?.out ? Math.max(res.out.exitIndex + 6, from) : from + 30) : 0;
   const upto = usePlayForward(from, end, !!res);
 
+  const [focus, onFocus] = useFocus();
   const overlays = useMemo(() => {
     if (!res || !ld) return null;
     if (res.at !== null) {
@@ -131,7 +132,7 @@ function ReplayOne({ d, step, total, onExit, onNext }: { d: Drill; step: number;
     <div className="drill">
       <TopBar title="Replay" step={step} total={total} onExit={onExit} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={res ? upto : now} digits={ld.w.digits} showDate={!!res} {...(overlays ?? {})} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={res ? upto : now} digits={ld.w.digits} showDate={!!res} {...(overlays ?? {})} focus={focus} /> : <Loading />}
         <div className="chart-label">{res && ld ? revealLabel(ld.w) : `M15 · candle ${Math.max(0, now - start + 1)} of ${LEAD + AFTER + 1}`}</div>
       </div>
       <div className="panel" key={res ? 'after' : 'before'}>
@@ -167,7 +168,7 @@ function ReplayOne({ d, step, total, onExit, onNext }: { d: Drill; step: number;
             ) : (
               <OutcomeLine out={ld?.out ?? null} prefix={d.k === 'v' ? 'Taken, it' : 'Had you taken it, it'} />
             )}
-            {res.e ? <Breakdown e={res.e} /> : null}
+            {res.e && ld ? <Breakdown e={res.e} w={ld.w} wrong={!res.ok} onFocus={onFocus} /> : null}
             <button className="btn primary wide" onClick={() => onNext(res.ok, res.xp)}>Next</button>
           </>
         )}

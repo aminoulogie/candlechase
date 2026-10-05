@@ -5,7 +5,7 @@ import type { SystemId } from '../../engine/types';
 import { timerFor } from '../../game/progress';
 import { getState, recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { cssVar, revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -57,13 +57,14 @@ function ChecklistOne({ d, step, total, onExit, onNext }: { d: Drill; step: numb
 
   const end = ld ? Math.min(ld.w.s.c.length - 1, ld.out ? ld.out.exitIndex + 6 : ld.w.li + 40) : 0;
   const upto = usePlayForward(ld?.w.li ?? 0, end, revealed);
+  const [focus, onFocus] = useFocus();
   const ov = useMemo(() => (ld ? (revealed ? revealOverlays(ld.e, ld.out, true) : { marks: [{ i: ld.w.li, text: '?', color: cssVar('--accent'), above: d.d === -1 }] }) : null), [ld, revealed, d.d]);
 
   return (
     <div className="drill">
       <TopBar title="Checklist drill" step={step} total={total} onExit={onExit} right={left !== null && !revealed ? <span className={left <= 5 ? 'timer hot' : 'timer'}>{left}s</span> : null} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} /> : <Loading />}
         <div className="chart-label">{revealed && ld ? revealLabel(ld.w) : 'M15 · date hidden'}</div>
       </div>
       <div className="panel" key={revealed ? 'after' : 'before'}>
@@ -87,7 +88,7 @@ function ChecklistOne({ d, step, total, onExit, onNext }: { d: Drill; step: numb
                     <div className="rule-body">
                       <div className="rule-title">
                         {r.title}
-                        {r.upgrade ? <span className="mini">upgrade</span> : null}
+                        {r.upgrade ? <span className="mini">extra</span> : null}
                       </div>
                       <div className="rule-sub">{r.sub}</div>
                     </div>
@@ -114,7 +115,7 @@ function ChecklistOne({ d, step, total, onExit, onNext }: { d: Drill; step: numb
               </span>
             </div>
             <OutcomeLine out={ld?.out ?? null} prefix={valid ? 'Taken, this trade' : 'Had you taken it, it'} />
-            {ld?.e ? <Breakdown e={ld.e} highlight={ticks} /> : null}
+            {ld?.e ? <Breakdown e={ld.e} w={ld.w} highlight={ticks} wrong={!ok || rulesRight < chart.length} onFocus={onFocus} /> : null}
             <button className="btn primary wide" onClick={() => onNext(ok, xp)}>Next</button>
           </>
         )}

@@ -84,6 +84,8 @@ export interface Evaluation {
   stop: number;
   target: number;
   marks: Marks;
+  /** the numbers each rule was decided on, for the Explain view */
+  info: Record<string, number | number[]>;
 }
 
 export interface Outcome {

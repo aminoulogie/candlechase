@@ -22,7 +22,7 @@ export function Rules() {
         <p className="focus-tag">{def.tagline}</p>
         <div className="legend">
           <span><i className="lg chart" /> Checked by the game</span>
-          <span><i className="lg up" /> Upgrade</span>
+          <span><i className="lg up" /> Extra rule (not in your checklist)</span>
           <span><i className="lg live" /> Live only</span>
         </div>
         <ol className="rulebook">
@@ -30,7 +30,7 @@ export function Rules() {
             <li key={r.id} className={`rb ${r.kind}${r.upgrade ? ' upgrade' : ''}`}>
               <div className="rule-title">
                 {r.title}
-                {r.upgrade ? <span className="mini">upgrade</span> : null}
+                {r.upgrade ? <span className="mini">extra</span> : null}
                 {r.kind === 'live' ? <span className="mini live">live only</span> : null}
               </div>
               <div className="rule-sub">{r.sub}</div>
@@ -40,7 +40,7 @@ export function Rules() {
         </ol>
         <p className="hint">
           {sys === 'ema'
-            ? 'Rules 1–8 are your checklist, word for word. The three upgrades add a bigger-trend filter, trading hours, and where the stop goes.'
+            ? 'Rules 1–8 are your checklist, word for word. The three “extra” rules are additions from the review of your system: a bigger-trend filter (EMA200), London/New York hours only, and a fixed place for the stop. They are graded like the others.'
             : 'Drafted in the same style as your EMA checklist. Every drill uses exactly these numbers.'}
         </p>
       </section>

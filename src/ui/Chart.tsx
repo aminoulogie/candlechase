@@ -40,6 +40,8 @@ interface Props {
   /** highlight these bars (Asian range) */
   shade?: { from: number; to: number; hi: number; lo: number };
   onTapPrice?: (price: number) => void;
+  /** candles an explanation is pointing at */
+  focus?: BarMark[];
   /** how many candles before `upto` to show */
   span?: number;
 }
@@ -55,7 +57,7 @@ const full = (t: number) =>
 
 const HISTORY = 400;
 
-export function Chart({ s, upto, digits, showDate, lines = [], marks = [], divergence, shade, onTapPrice, span = 90 }: Props) {
+export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus = [], divergence, shade, onTapPrice, span = 90 }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const api = useRef<{
     chart: IChartApi;
@@ -185,7 +187,7 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], diver
     a.priceLines = lines.map((l) =>
       a.candles.createPriceLine({ price: l.price, color: l.color, lineWidth: 2, lineStyle: l.dashed ? LineStyle.Dashed : LineStyle.Solid, axisLabelVisible: true, title: l.title }),
     );
-    const m: SeriesMarker<Time>[] = marks
+    const m: SeriesMarker<Time>[] = [...marks, ...focus]
       .filter((k) => k.i <= upto && k.i >= 0)
       .sort((x, y) => x.i - y.i)
       .map((k) => ({
@@ -223,7 +225,7 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], diver
       a.shadeHi.setData([]);
       a.shadeLo.setData([]);
     }
-  }, [s, upto, lines, marks, divergence, shade]);
+  }, [s, upto, lines, marks, focus, divergence, shade]);
 
   return <div className="chart-box" ref={box} />;
 }

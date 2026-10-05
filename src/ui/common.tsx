@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Drill } from '../engine/codec';
 import { evaluate, evaluateBest, rank } from '../engine/evaluate';
+import { explainRule } from '../engine/explain';
+import type { Explanation } from '../engine/explain';
 import { simulate } from '../engine/outcome';
 import { SYSTEMS } from '../engine/systems';
 import { INSTRUMENTS, SYSTEM_ORDER } from '../engine/types';
@@ -9,6 +11,8 @@ import type { Dir, Evaluation, InstrumentId, Outcome, SystemId } from '../engine
 import { loadWindow } from '../data/load';
 import type { Window } from '../data/load';
 import { addPractice } from '../game/store';
+import type { BarMark } from './Chart';
+import { cssVar } from './overlays';
 
 export const sysName = (s: string) => (s in SYSTEMS ? SYSTEMS[s as SystemId].name : 'Nothing');
 export const dirName = (d: number) => (d === 1 ? 'Buy' : d === -1 ? 'Sell' : '');
@@ -81,8 +85,48 @@ export function nearestAt(w: Window, i: number): Evaluation | null {
   return best;
 }
 
-export function Breakdown({ e, highlight }: { e: Evaluation; highlight?: Record<string, boolean | undefined> }) {
+export type FocusBars = Explanation['bars'];
+
+/**
+ * The rule-by-rule verdict. Each chart rule has a "Why?" that shows the numbers
+ * behind it and points at the candles on the chart.
+ */
+export function Breakdown({
+  e,
+  w,
+  highlight,
+  wrong,
+  onFocus,
+}: {
+  e: Evaluation;
+  w: Window;
+  highlight?: Record<string, boolean | undefined>;
+  /** the answer was wrong: offer "Explain what I got wrong" */
+  wrong?: boolean;
+  onFocus?: (bars: FocusBars) => void;
+}) {
   const def = SYSTEMS[e.sys];
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const why = (id: string) => explainRule(w.s, e, id, w.digits);
+
+  const show = (ids: string[]) => {
+    setOpen(new Set(ids));
+    onFocus?.(ids.flatMap((id) => why(id)?.bars ?? []));
+  };
+  const toggle = (id: string) => {
+    const next = new Set(open);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOpen(next);
+    onFocus?.([...next].flatMap((k) => why(k)?.bars ?? []));
+  };
+  const explainMistakes = () => {
+    const chart = def.rules.filter((r) => r.kind === 'chart').map((r) => r.id);
+    const misjudged = chart.filter((id) => highlight?.[id] !== undefined && highlight[id] !== e.pass[id]);
+    const targets = [...new Set([...e.failed, ...misjudged])];
+    show(targets.length ? targets : chart);
+  };
+
   return (
     <div className="breakdown">
       <div className="bd-head">
@@ -90,6 +134,11 @@ export function Breakdown({ e, highlight }: { e: Evaluation; highlight?: Record<
         <span className={e.dir === 1 ? 'tag up' : 'tag down'}>{dirName(e.dir)}</span>
         {e.valid ? <span className="tag ok">All rules met</span> : <span className="tag bad">{e.failed.length} rule{e.failed.length === 1 ? '' : 's'} not met</span>}
       </div>
+      {wrong ? (
+        <button className="btn explain wide" onClick={explainMistakes}>
+          Explain what I got wrong
+        </button>
+      ) : null}
       <ul className="rules">
         {def.rules.map((r) => {
           if (r.kind === 'live')
@@ -104,16 +153,21 @@ export function Breakdown({ e, highlight }: { e: Evaluation; highlight?: Record<
             );
           const ok = e.pass[r.id];
           const you = highlight?.[r.id];
+          const ex = open.has(r.id) ? why(r.id) : null;
           return (
             <li key={r.id} className={`rule ${ok ? 'pass' : 'fail'}`}>
               <span className="mark">{ok ? '✓' : '✗'}</span>
-              <div>
+              <div className="rule-body">
                 <div className="rule-title">
                   {r.title}
-                  {r.upgrade ? <span className="mini">upgrade</span> : null}
+                  {r.upgrade ? <span className="mini">extra</span> : null}
                 </div>
                 {!ok || you !== undefined ? <div className="rule-sub">{r.precise ?? r.sub}</div> : null}
                 {you !== undefined ? <div className={you === ok ? 'you right' : 'you wrong'}>You said {you ? 'met' : 'not met'} — {you === ok ? 'right' : 'wrong'}</div> : null}
+                {ex ? <div className="why-text">{ex.text}</div> : null}
+                <button className="why-btn" onClick={() => toggle(r.id)}>
+                  {ex ? 'Hide' : 'Why?'}
+                </button>
               </div>
             </li>
           );
@@ -121,6 +175,12 @@ export function Breakdown({ e, highlight }: { e: Evaluation; highlight?: Record<
       </ul>
     </div>
   );
+}
+
+/** Candles the explanation points at, drawn on the chart. */
+export function useFocus(): [BarMark[], (bars: FocusBars) => void] {
+  const [focus, setFocus] = useState<BarMark[]>([]);
+  return [focus, (bars) => setFocus(bars.map((b) => ({ i: b.i, text: b.label, color: cssVar('--accent'), above: b.above, shape: b.above ? 'arrowDown' : 'arrowUp' })))];
 }
 
 export function OutcomeLine({ out, prefix }: { out: Outcome | null; prefix?: string }) {

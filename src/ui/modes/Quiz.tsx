@@ -4,7 +4,7 @@ import { SYSTEM_ORDER } from '../../engine/types';
 import type { SystemId } from '../../engine/types';
 import { recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -93,12 +93,13 @@ function QuizReview({ d, answer, onBack }: { d: Drill; answer: SystemId; onBack:
   const end = ld ? Math.min(ld.w.s.c.length - 1, ld.out ? ld.out.exitIndex + 6 : ld.w.li + 40) : 0;
   const upto = usePlayForward(ld?.w.li ?? 0, end, !!ld);
   const ov = useMemo(() => (ld ? revealOverlays(ld.e, ld.out, true) : null), [ld]);
+  const [focus, onFocus] = useFocus();
   const good = isRight(d, answer);
   return (
     <div className="drill">
       <TopBar title="Review" onExit={onBack} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate {...(ov ?? {})} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate {...(ov ?? {})} focus={focus} /> : <Loading />}
         <div className="chart-label">{ld ? revealLabel(ld.w) : ''}</div>
       </div>
       <div className="panel">
@@ -110,7 +111,7 @@ function QuizReview({ d, answer, onBack }: { d: Drill; answer: SystemId; onBack:
           </span>
         </div>
         <OutcomeLine out={ld?.out ?? null} />
-        {ld?.e ? <Breakdown e={ld.e} /> : null}
+        {ld?.e ? <Breakdown e={ld.e} w={ld.w} wrong={!good} onFocus={onFocus} /> : null}
         <button className="btn primary wide" onClick={onBack}>Back to results</button>
       </div>
     </div>
