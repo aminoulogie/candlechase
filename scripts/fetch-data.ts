@@ -82,9 +82,9 @@ function merge() {
       bars.l.push(l);
       bars.c.push(c);
     }
-    if (bars.t.length < 50000) throw new Error(`${id}: only ${bars.t.length} candles, expected ~120k`);
+    if (bars.t.length < 30000) throw new Error(`${id}: only ${bars.t.length} candles, expected ~120k`);
     writeFileSync(`data/raw/${id}.json`, JSON.stringify(bars));
-    console.log(`${id}: ${bars.t.length} candles from ${files.join(', ')}`);
+    console.log(`${id}: ${bars.t.length} candles from ${files.length} months`);
   }
 }
 

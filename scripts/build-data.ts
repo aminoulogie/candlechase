@@ -87,7 +87,15 @@ function main() {
     const nothing: number[] = [];
     const validAt = new Map<number, SystemId[]>();
 
+    // A hole in the history (a month that failed to download) bends every indicator after it,
+    // so no drill or backtest trade may use a window that crosses one.
+    const gapsBefore = new Int32Array(n + 1);
+    for (let i = 1; i < n; i++) gapsBefore[i + 1] = gapsBefore[i] + (bars.t[i] - bars.t[i - 1] > 4 * 86400 ? 1 : 0);
+    const clean = (i: number) => gapsBefore[Math.min(n, i + LOOKAHEAD + 1)] - gapsBefore[i - WARMUP + 1] === 0;
+    if (gapsBefore[n]) console.warn(`${id}: ${gapsBefore[n]} gap(s) in the history — windows across them are skipped`);
+
     for (let i = WARMUP; i < n - Math.max(MAX_HOLD, LOOKAHEAD) - 1; i++) {
+      if (!clean(i)) continue;
       let anyTrigger = false;
       for (const sys of SYSTEM_ORDER) {
         for (const dir of [1, -1] as Dir[]) {
