@@ -21,7 +21,9 @@ document.addEventListener(
   { passive: false },
 );
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// The iPhone app bundles everything already; the service worker is only for the web version.
+const native = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+if ('serviceWorker' in navigator && import.meta.env.PROD && !native) {
   navigator.serviceWorker.register('sw.js').catch(() => {
     // offline support is a bonus; the app works without it
   });

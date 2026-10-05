@@ -1,0 +1,59 @@
+name: Build iPhone app (.ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'public/**', 'ios/**', 'index.html', 'capacitor.config.ts', 'package-lock.json']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Copy the web app into the iOS project
+        run: npx cap sync ios
+      - name: Build the app (unsigned)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -list
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            build | tail -40
+      - name: Package Candlechase.ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry Candlechase.ipa Payload
+          ls -la Candlechase.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Candlechase-ipa
+          path: Candlechase.ipa
+      - name: Publish as a release (direct download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-${{ github.run_number }}
+          name: Candlechase iPhone build ${{ github.run_number }}
+          make_latest: true
+          files: Candlechase.ipa
+          body: |
+            Unsigned iPhone build of Candlechase (version 1.0.${{ github.run_number }}) with all market data bundled — works offline.
+
+            Install it with Sideloadly or AltStore using your Apple ID (they sign it on install). With a free Apple ID the app must be re-signed every 7 days; with a paid Apple Developer account it lasts a year.
