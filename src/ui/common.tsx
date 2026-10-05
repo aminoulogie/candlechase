@@ -198,3 +198,26 @@ export function Loading({ text = 'Loading chart…' }: { text?: string }) {
     </div>
   );
 }
+
+/** Two-tap confirm: browser confirm() dialogs are blocked in some hosts. */
+export function ConfirmButton({ className, label, confirmLabel, onConfirm }: { className: string; label: string; confirmLabel: string; onConfirm: () => void }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const id = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(id);
+  }, [armed]);
+  return (
+    <button
+      className={armed ? `${className} armed` : className}
+      onClick={() => {
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+        } else setArmed(true);
+      }}
+    >
+      {armed ? confirmLabel : label}
+    </button>
+  );
+}

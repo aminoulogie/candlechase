@@ -7,6 +7,7 @@ import type { Library } from '../../data/load';
 import { money, valuePerUnit } from '../../game/account';
 import { systemProgress } from '../../game/progress';
 import { exportState, importState, resetAll, update, useGame } from '../../game/store';
+import { ConfirmButton } from '../common';
 import type { Mode } from '../../game/store';
 
 const MODE_NAMES: Record<Mode, string> = { spot: 'Spot it', replay: 'Replay', checklist: 'Checklist', place: 'Place it', quiz: 'Exam' };
@@ -182,14 +183,7 @@ export function Stats({ lib }: { lib: Library }) {
               }
             }}
           />
-          <button
-            className="btn danger"
-            onClick={() => {
-              if (confirm('Erase all progress, trades and the live log?')) resetAll();
-            }}
-          >
-            Reset everything
-          </button>
+          <ConfirmButton className="btn danger" label="Reset everything" confirmLabel="Tap again to erase all progress" onConfirm={resetAll} />
         </div>
         {msg ? <p className="hint">{msg}</p> : null}
       </section>

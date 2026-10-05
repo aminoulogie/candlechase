@@ -11,7 +11,7 @@ export function revealOverlays(e: Evaluation | null, out: Outcome | null, showTr
   let shade: { from: number; to: number; hi: number; lo: number } | undefined;
   if (!e) return { lines, marks, divergence, shade };
 
-  if (e.marks.level !== undefined) lines.push({ price: e.marks.level, color: v('--warn'), title: 'Level', dashed: true });
+  if (e.marks.level !== undefined) lines.push({ price: e.marks.level, color: v('--sys-sr'), title: 'Level', dashed: true });
   if (e.marks.rangeHigh !== undefined && e.marks.rangeFrom !== undefined) {
     shade = { from: e.marks.rangeFrom, to: e.i, hi: e.marks.rangeHigh, lo: e.marks.rangeLow! };
   }

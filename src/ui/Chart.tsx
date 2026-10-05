@@ -111,8 +111,8 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], diver
     const e20 = line(css('--ema20'), 2);
     const e50 = line(css('--ema50'), 2);
     const e200 = line(css('--ema200'), 1, LineStyle.Dashed);
-    const shadeHi = line(css('--warn'), 2);
-    const shadeLo = line(css('--warn'), 2);
+    const shadeHi = line(css('--sys-session'), 2);
+    const shadeLo = line(css('--sys-session'), 2);
     const divPrice = line(css('--text'), 2, LineStyle.Dashed);
     const rsi = chart.addSeries(LineSeries, { color: css('--rsi'), lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: { type: 'price', precision: 0, minMove: 1 } }, 1);
     const divRsi = chart.addSeries(LineSeries, { color: css('--text'), lineWidth: 2, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 1);

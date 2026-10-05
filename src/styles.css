@@ -7,17 +7,18 @@
   --text: #eef2f7;
   --muted: #8792a2;
   --faint: #5b6575;
-  --accent: #c6f45b;
-  --accent-ink: #0b0e13;
+  /* Trading-terminal amber on graphite. Candles keep the market's own green/red. */
+  --accent: #ffb43c;
+  --accent-ink: #1a1206;
   --up: #2fd1a3;
-  --down: #ff5c74;
-  --warn: #ffc046;
+  --down: #ff4d6d;
+  --warn: #ffb43c;
   --ema20: #5fa4ff;
-  --ema50: #ff9f43;
+  --ema50: #ff7a59;
   --ema200: #5d6778;
   --rsi: #b18cff;
   --sys-ema: #5fa4ff;
-  --sys-sr: #ffc046;
+  --sys-sr: #5fd0e0;
   --sys-rsi: #b18cff;
   --sys-session: #ff7ab8;
   --r: 18px;
@@ -1280,4 +1281,12 @@ b {
     animation: none !important;
     transition: none !important;
   }
+}
+.armed {
+  color: var(--down);
+  font-weight: 700;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

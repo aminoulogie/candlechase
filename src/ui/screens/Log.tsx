@@ -4,6 +4,7 @@ import { INSTRUMENTS, INSTRUMENT_ORDER, SYSTEM_ORDER } from '../../engine/types'
 import type { InstrumentId, SystemId } from '../../engine/types';
 import { LOTS } from '../../game/account';
 import { update, useGame } from '../../game/store';
+import { ConfirmButton } from '../common';
 import type { LiveTrade } from '../../game/store';
 
 const GATE_TRADES = 30;
@@ -64,14 +65,7 @@ export function Log() {
                 </div>
                 <div className="live-right">
                   <span className={t.r === null ? '' : t.r >= 0 ? 'up-text' : 'down-text'}>{t.r === null ? 'open' : `${t.r >= 0 ? '+' : ''}${t.r}R`}</span>
-                  <button
-                    className="link"
-                    onClick={() => {
-                      if (confirm('Delete this entry?')) update((st) => ({ live: st.live.filter((x) => x.id !== t.id) }));
-                    }}
-                  >
-                    delete
-                  </button>
+                  <ConfirmButton className="link" label="delete" confirmLabel="tap to delete" onConfirm={() => update((st) => ({ live: st.live.filter((x) => x.id !== t.id) }))} />
                 </div>
               </li>
             );
