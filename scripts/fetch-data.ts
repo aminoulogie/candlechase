@@ -20,35 +20,42 @@ async function fetchRange(source: string, from: string, to: string): Promise<num
     format: 'array',
     volumes: false,
     ignoreFlats: true,
-    batchSize: 3,
-    pauseBetweenBatchesMs: 1500,
-    retryCount: 6,
-    pauseBetweenRetriesMs: 10000,
+    batchSize: 2,
+    pauseBetweenBatchesMs: 2000,
+    retryCount: 3,
+    pauseBetweenRetriesMs: 15000,
     retryOnEmpty: false,
     failAfterRetryCount: true,
-    useCache: true,
-    cacheFolderPath: '.dukascopy-cache',
   })) as number[][];
 }
 
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/** One file per month, so a rate-limited run keeps what it got and the next run resumes. */
 async function fetchYear(id: InstrumentId, year: number) {
-  const today = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
-  const from = year === Number(FROM.slice(0, 4)) ? FROM : `${year}-01-01`;
-  const to = `${year + 1}-01-01` < today ? `${year + 1}-01-01` : today;
-  if (from >= to) return;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const started = Date.now();
-      const rows = await fetchRange(INSTRUMENTS[id].source, from, to);
-      mkdirSync(PARTS, { recursive: true });
-      writeFileSync(`${PARTS}/${id}-${year}.json`, JSON.stringify(rows));
-      console.log(`${id} ${from}..${to}: ${rows.length} candles in ${((Date.now() - started) / 1000).toFixed(0)}s`);
-      return;
-    } catch (e) {
-      // Rate limited: back off and try again (days already downloaded are cached).
-      if (attempt >= 8) throw e;
-      console.log(`${id} ${year}: ${(e as Error).message}, waiting ${attempt * 45}s`);
-      await new Promise((r) => setTimeout(r, attempt * 45_000));
+  mkdirSync(PARTS, { recursive: true });
+  const yesterday = new Date(Date.now() - 86400_000);
+  const recent = Date.now() - 40 * 86400_000;
+  for (let m = 0; m < 12; m++) {
+    const a = new Date(Date.UTC(year, m, 1));
+    const b = new Date(Date.UTC(year, m + 1, 1));
+    const from = iso(a) < FROM ? FROM : iso(a);
+    const to = b > yesterday ? iso(yesterday) : iso(b);
+    if (from >= to || iso(b) <= FROM) continue;
+    const file = `${PARTS}/${id}-${year}-${String(m + 1).padStart(2, '0')}.json`;
+    // finished months never change; the last ~6 weeks are refetched to pick up new candles
+    if (existsSync(file) && b.getTime() < recent) continue;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const rows = await fetchRange(INSTRUMENTS[id].source, from, to);
+        writeFileSync(file, JSON.stringify(rows));
+        console.log(`${id} ${from}..${to}: ${rows.length} candles`);
+        break;
+      } catch (e) {
+        if (attempt >= 6) throw e;
+        console.log(`${id} ${from}: ${(e as Error).message}, waiting ${attempt * 60}s`);
+        await new Promise((r) => setTimeout(r, attempt * 60_000));
+      }
     }
   }
 }

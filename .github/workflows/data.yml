@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 3
       matrix:
         instrument: [eurusd, xauusd, nas100]
         year: [2021, 2022, 2023, 2024, 2025, 2026]
@@ -30,17 +30,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/cache/restore@v4
+      - name: Restore months already downloaded
+        uses: actions/cache/restore@v4
         with:
-          path: .dukascopy-cache
-          key: duka-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}
-          restore-keys: duka-${{ matrix.instrument }}-${{ matrix.year }}-
+          path: data/raw/parts
+          key: parts-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: parts-${{ matrix.instrument }}-${{ matrix.year }}-
       - run: npx tsx scripts/fetch-data.ts ${{ matrix.instrument }} ${{ matrix.year }}
-      - if: always()
+      - name: Save months downloaded (even on failure, so a re-run resumes)
+        if: always()
         uses: actions/cache/save@v4
         with:
-          path: .dukascopy-cache
-          key: duka-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}
+          path: data/raw/parts
+          key: parts-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v4
         with:
           name: part-${{ matrix.instrument }}-${{ matrix.year }}
