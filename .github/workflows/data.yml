@@ -43,7 +43,9 @@ jobs:
         with:
           path: data/raw/parts
           key: parts-${{ matrix.instrument }}-${{ matrix.year }}-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/upload-artifact@v4
+      - name: Hand the months on to the build (even if a later month failed)
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: part-${{ matrix.instrument }}-${{ matrix.year }}
           path: data/raw/parts/
