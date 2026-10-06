@@ -387,6 +387,8 @@ export function Odds({ lib, onTryInLab }: { lib: Library; onTryInLab: (p: LabPre
 const TF_LABEL: Record<string, string> = { m15: '15 min', h1: '1 hour', h4: '4 hours' };
 
 function unpack(l: Leader): SimTrade[] {
+  // data built before trades were shipped with each leader
+  if (!l.trades) return [];
   let h = 0;
   return l.trades.h.map((d, k) => ({
     t: l.trades.start + (h += d) * 3600,
