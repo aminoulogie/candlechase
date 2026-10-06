@@ -67,6 +67,8 @@ export interface LabPreset {
   markets: string[];
   target: number;
   off: string[];
+  tf?: string;
+  stopMult?: number;
 }
 
 export interface State {

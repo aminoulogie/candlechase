@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { verdict, VERDICT_TEXT } from '../../engine/backtest';
 import type { StatBlock } from '../../engine/backtest';
-import type { BacktestRow } from '../../engine/codec';
+import type { BacktestRow, Leader } from '../../engine/codec';
 import { SYSTEMS } from '../../engine/systems';
 import { INSTRUMENTS, INSTRUMENT_ORDER } from '../../engine/types';
 import type { InstrumentId, SystemId } from '../../engine/types';
 import { loadTrades } from '../../data/load';
-import type { Library, TradeBook } from '../../data/load';
+import type { Library, SimTrade, TradeBook } from '../../data/load';
 import { fmtMoney, getSim, lastYears, setSim, simulateMoney, statsOf } from '../../game/money';
 import type { MoneyResult } from '../../game/money';
 import { useGame } from '../../game/store';
-import type { LabPreset } from '../../game/store';
+import type { LabPreset, SimSettings } from '../../game/store';
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const r2 = (x: number) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}R`;
@@ -315,7 +315,6 @@ export function Odds({ lib, onTryInLab }: { lib: Library; onTryInLab: (p: LabPre
   const works = verdicts.filter((v) => v === 'works').length;
   const top = cards[0];
   const leaders = bt.leaders.filter((l) => market === 'all' || l.x === market);
-  const ruleName = (sys: string, id: string | null) => (id ? SYSTEMS[sys as SystemId].rules.find((r) => r.id === id)?.title ?? id : null);
 
   return (
     <div className="screen">
@@ -349,37 +348,30 @@ export function Odds({ lib, onTryInLab }: { lib: Library; onTryInLab: (p: LabPre
 
       {leaders.length ? (
         <section className="card leaders">
-          <div className="eyebrow">Best found · {bt.searched} combinations tested</div>
+          <div className="eyebrow">Best found · {bt.searched.toLocaleString('en-US')} combinations tested</div>
           <p className="hint">
-            Every system × market × target, with each rule switched off in turn. These are the ones that made money both before 2025 and since, least likely to be luck first.
-            Testing {bt.searched} versions and keeping the best always flatters the winner — treat these as leads to test live at 0.01, not proof.
+            Every system × market × candle size (15 min, 1 h, 4 h) × stop size × target, plus each rule switched off. Kept only if it made money both before 2025 and since. Testing
+            this many always flatters the winners — treat them as leads to test live at 0.01, not proof.
           </p>
+          <h4 className="lab-h">Most money · {fmtMoney(sim.balance)} at {sim.risk}% risk, last {sim.years} yr</h4>
           <ol className="leader-list">
             {leaders.slice(0, 5).map((l, k) => (
-              <li key={k}>
-                <div className="leader-name">
-                  <b>
-                    {SYSTEMS[l.sys as SystemId].name} · {INSTRUMENTS[l.x as InstrumentId].name} · {l.target}R
-                  </b>
-                  <small>{l.off ? `without “${ruleName(l.sys, l.off)}”` : 'rules as written'}</small>
-                </div>
-                <div className="leader-nums">
-                  <span>
-                    <b className="up-text">{r2(l.all.avgR)}</b> per trade
-                  </span>
-                  <span>{pct(l.all.winRate)} win</span>
-                  <span>{l.all.trades} trades</span>
-                  <span>luck {l.all.pValue < 0.01 ? '<1' : Math.round(l.all.pValue * 100)}%</span>
-                </div>
-                <button
-                  className="why-btn"
-                  onClick={() => onTryInLab({ sys: l.sys, markets: [l.x], target: l.target, off: l.off ? [l.off] : [] })}
-                >
-                  Test it in the Lab with your money ›
-                </button>
-              </li>
+              <LeaderRow key={k} l={l} sim={sim} endT={endT} onTry={onTryInLab} />
             ))}
           </ol>
+          {bt.winLeaders?.length ? (
+            <>
+              <h4 className="lab-h">Highest win rate that still made money</h4>
+              <ol className="leader-list">
+                {bt.winLeaders
+                  .filter((l) => market === 'all' || l.x === market)
+                  .slice(0, 3)
+                  .map((l, k) => (
+                    <LeaderRow key={k} l={l} sim={sim} endT={endT} onTry={onTryInLab} />
+                  ))}
+              </ol>
+            </>
+          ) : null}
         </section>
       ) : null}
 
@@ -389,5 +381,49 @@ export function Odds({ lib, onTryInLab }: { lib: Library; onTryInLab: (p: LabPre
       ))}
       <p className="foot">Past results don’t promise future ones. Practice tool, not financial advice.</p>
     </div>
+  );
+}
+
+const TF_LABEL: Record<string, string> = { m15: '15 min', h1: '1 hour', h4: '4 hours' };
+
+function unpack(l: Leader): SimTrade[] {
+  let h = 0;
+  return l.trades.h.map((d, k) => ({
+    t: l.trades.start + (h += d) * 3600,
+    r: l.trades.r[k] / 100,
+    result: l.trades.k[k] === 'w' ? 'win' : l.trades.k[k] === 'l' ? 'loss' : 'open',
+  }));
+}
+
+function LeaderRow({ l, sim, endT, onTry }: { l: Leader; sim: SimSettings; endT: number; onTry: (p: LabPreset) => void }) {
+  const list = lastYears(unpack(l), sim.years, endT);
+  const m = simulateMoney(list, sim.balance, sim.risk);
+  const st = statsOf(list, l.target);
+  const offName = l.off ? SYSTEMS[l.sys as SystemId].rules.find((r) => r.id === l.off)?.title ?? l.off : null;
+  return (
+    <li>
+      <div className="leader-name">
+        <b>
+          {SYSTEMS[l.sys as SystemId].name} · {INSTRUMENTS[l.x as InstrumentId].name}
+        </b>
+        <small>
+          {TF_LABEL[l.tf ?? 'm15']} candles · stop ×{l.stopMult ?? 1} · target {l.target}R{offName ? ` · without “${offName}”` : ''}
+        </small>
+      </div>
+      <div className="leader-nums">
+        <span>
+          <b className={m.profit >= 0 ? 'up-text' : 'down-text'}>
+            {fmtMoney(m.start)} → {fmtMoney(m.end)}
+          </b>
+        </span>
+        <span>{pct(st.winRate)} win</span>
+        <span>{st.trades} trades</span>
+        <span>worst drop −{m.maxDrawdown.toFixed(0)}%</span>
+        <span>unseen {r2(l.recent.avgR)}</span>
+      </div>
+      <button className="why-btn" onClick={() => onTry({ sys: l.sys, markets: [l.x], target: l.target, off: l.off ? [l.off] : [], tf: l.tf, stopMult: l.stopMult })}>
+        Open it in the Lab ›
+      </button>
+    </li>
   );
 }

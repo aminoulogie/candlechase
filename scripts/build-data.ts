@@ -7,7 +7,8 @@ import type { Candidate, Trade } from '../src/engine/backtest';
 import { CHUNK, encodeChunk } from '../src/engine/codec';
 import type { BacktestFile, BacktestRow, Drill, DrillFile, Leader, Manifest, TradeFile } from '../src/engine/codec';
 import { evaluate } from '../src/engine/evaluate';
-import { buildSeries, windowSeries } from '../src/engine/indicators';
+import { aggregate, buildSeries, windowSeries } from '../src/engine/indicators';
+import { simulateMoney } from '../src/game/money';
 import { simulate } from '../src/engine/outcome';
 import { SYSTEMS } from '../src/engine/systems';
 import { INSTRUMENTS, INSTRUMENT_ORDER, SYSTEM_ORDER } from '../src/engine/types';
@@ -19,6 +20,20 @@ const PER_SYSTEM_VALID = 300;
 const PER_SYSTEM_NEAR = 300;
 const PER_INSTRUMENT_NOTHING = 300;
 const TARGETS = [1, 1.5, 2, 3];
+const STOP_MULTS = [0.5, 0.75, 1, 1.5, 2];
+const EXIT_TARGETS = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+// Trades packed like trades.json, relative to a fixed origin so leaders can be priced in the app.
+const PACK_START = Date.UTC(2021, 9, 1) / 1000;
+function packTrades(tr: Trade[]): Leader['trades'] {
+  let prev = 0;
+  const h: number[] = [];
+  for (const t of tr) {
+    const x = Math.round((t.t - PACK_START) / 3600);
+    h.push(x - prev);
+    prev = x;
+  }
+  return { start: PACK_START, h, r: tr.map((t) => Math.round(t.r * 100)), k: tr.map((t) => t.result[0]).join('') };
+}
 
 let seed = 20211001;
 const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
@@ -171,6 +186,9 @@ function main() {
             x: id,
             target: r,
             off,
+            tf: 'm15',
+            stopMult: 1,
+            trades: packTrades(tr),
             early: stats(
               tr.filter((t) => t.t < SPLIT_T),
               r,
@@ -186,6 +204,40 @@ function main() {
       pooled[sys] ??= {};
       for (const r of TARGETS) (pooled[sys][String(r)] ??= []).push(...perTarget[String(r)]);
       pooledSeen[sys] = (pooledSeen[sys] ?? 0) + seen;
+    }
+
+    // Search over exits and candle size: H1/H4 built from these M15 candles, stop 0.5-2x, target 0.5-4R.
+    for (const tf of ['m15', 'h1', 'h4'] as const) {
+      const tb = aggregate(bars, tf);
+      const ts = tf === 'm15' ? s : buildSeries(tb);
+      const tclean = tf === 'm15' ? clean : gapGuard(tb);
+      for (const sys of SYSTEM_ORDER) {
+        const tc = tf === 'm15' ? cands[sys] : scan(tb, ts, sys, tclean);
+        for (const sm of STOP_MULTS)
+          for (const r of EXIT_TARGETS) {
+            if (tf === 'm15' && sm === 1 && TARGETS.includes(r)) continue; // already in the rule search
+            const tr = trade(tb, tc, { targetR: r, spread: meta.spread, stopMult: sm }).trades;
+            if (tr.length < 30) continue;
+            combos.push({
+              sys,
+              x: id,
+              target: r,
+              off: null,
+              tf,
+              stopMult: sm,
+              trades: packTrades(tr),
+              early: stats(
+                tr.filter((t) => t.t < SPLIT_T),
+                r,
+              ),
+              recent: stats(
+                tr.filter((t) => t.t >= SPLIT_T),
+                r,
+              ),
+              all: stats(tr, r),
+            });
+          }
+      }
     }
 
     // Drills, double-checked against the same windowed calculation the app runs.
@@ -228,10 +280,13 @@ function main() {
 
   const drillFile: DrillFile = { generated: manifest.generated, drills };
   // Leaders: positive before 2025 AND since, enough trades in each, least likely to be luck first.
-  const leaders = combos
-    .filter((c) => c.early.trades >= 40 && c.recent.trades >= 40 && c.early.avgR > 0 && c.recent.avgR > 0)
-    .sort((a, b) => a.all.pValue - b.all.pValue)
-    .slice(0, 10);
+  const held = combos.filter((c) => c.early.trades >= 30 && c.recent.trades >= 30 && c.early.avgR > 0 && c.recent.avgR > 0 && c.all.pValue < 0.2);
+  const endOf = (c: Leader) => {
+    let k = 0;
+    return simulateMoney(c.trades.r.map((r) => ({ r: r / 100, k: k++ })), 10000, 1).end;
+  };
+  const leaders = [...held].sort((a, b) => endOf(b) - endOf(a)).slice(0, 8);
+  const winLeaders = [...held].sort((a, b) => b.all.winRate - a.all.winRate).slice(0, 5);
   const bt: BacktestFile = {
     generated: manifest.generated,
     from: new Date(firstT * 1000).toISOString().slice(0, 10),
@@ -239,8 +294,9 @@ function main() {
     split: new Date(SPLIT_T * 1000).toISOString().slice(0, 10),
     rows,
     searched: combos.length,
-    significant: combos.filter((c) => c.all.trades >= 60 && c.all.avgR > 0 && c.all.pValue < 0.05).length,
+    significant: combos.filter((c) => c.all.trades >= 30 && c.all.avgR > 0 && c.all.pValue < 0.05).length,
     leaders,
+    winLeaders,
   };
   const start = Math.floor(firstT / 3600) * 3600;
   const tf: TradeFile = { start, rows: {} };
@@ -265,6 +321,9 @@ function main() {
 
   const count = (k: string) => drills.filter((d) => d.k === k).length;
   console.log(`drills: ${drills.length} (valid ${count('v')}, near miss ${count('n')}, nothing ${count('z')})`);
+  console.log(`search: ${combos.length} combinations, ${held.length} held up`);
+  for (const l of leaders) console.log(`  money: ${l.sys} ${l.x} ${l.tf} stop×${l.stopMult} ${l.target}R${l.off ? ' -' + l.off : ''} avg ${l.all.avgR.toFixed(2)} n=${l.all.trades} $10k->${Math.round(endOf(l))}`);
+  for (const l of winLeaders) console.log(`  win: ${l.sys} ${l.x} ${l.tf} stop×${l.stopMult} ${l.target}R win ${(l.all.winRate * 100).toFixed(0)}% avg ${l.all.avgR.toFixed(2)}`);
   console.log('\nAll markets, 2R target:');
   for (const r of rows.filter((x) => x.x === 'all').sort((a, b) => b.main.avgR - a.main.avgR)) {
     const m = r.main;

@@ -163,3 +163,31 @@ export function windowSeries(b: Bars, i: number): { s: Series; offset: number } 
   };
   return { s: buildSeries(w), offset: from };
 }
+
+export type Timeframe = 'm15' | 'h1' | 'h4';
+export const TF_MINUTES: Record<Timeframe, number> = { m15: 15, h1: 60, h4: 240 };
+
+/** Build higher-timeframe candles from M15 ones (UTC-aligned buckets). */
+export function aggregate(b: Bars, tf: Timeframe): Bars {
+  if (tf === 'm15') return b;
+  const size = TF_MINUTES[tf] * 60;
+  const out: Bars = { t: [], o: [], h: [], l: [], c: [] };
+  let cur = -1;
+  for (let i = 0; i < b.t.length; i++) {
+    const k = Math.floor(b.t[i] / size) * size;
+    if (k !== cur) {
+      cur = k;
+      out.t.push(k);
+      out.o.push(b.o[i]);
+      out.h.push(b.h[i]);
+      out.l.push(b.l[i]);
+      out.c.push(b.c[i]);
+    } else {
+      const n = out.t.length - 1;
+      out.h[n] = Math.max(out.h[n], b.h[i]);
+      out.l[n] = Math.min(out.l[n], b.l[i]);
+      out.c[n] = b.c[i];
+    }
+  }
+  return out;
+}

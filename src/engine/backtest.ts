@@ -74,10 +74,15 @@ export function scan(bars: Bars, s: Series, sys: SystemId, clean: (i: number) =>
 }
 
 export interface TradeOptions {
+  /** target as a multiple of the stop distance */
   targetR: number;
   spread: number;
   /** rules treated as met */
   disabled?: Set<string>;
+  /** scale the system's stop distance (0.5 = half as far) */
+  stopMult?: number;
+  /** fixed stop and target distances in price units, replacing the system's stop */
+  fixed?: { stop: number; target: number };
 }
 
 /** Take every valid candidate, one trade at a time, stop as the rules say, target at targetR. */
@@ -89,10 +94,11 @@ export function trade(bars: Bars, cands: Candidate[], o: TradeOptions): { trades
     if (!c.failed.every((f) => o.disabled?.has(f))) continue;
     seen++;
     if (c.i <= busyUntil) continue;
-    const risk = Math.abs(c.entry - c.stop);
+    const risk = o.fixed ? o.fixed.stop : Math.abs(c.entry - c.stop) * (o.stopMult ?? 1);
     if (!(risk > 0)) continue;
-    const target = c.entry + c.dir * o.targetR * risk;
-    const out = simulate(bars, c.i, c.dir, c.entry, c.stop, target, o.spread);
+    const stop = c.entry - c.dir * risk;
+    const target = c.entry + c.dir * (o.fixed ? o.fixed.target : o.targetR * risk);
+    const out = simulate(bars, c.i, c.dir, c.entry, stop, target, o.spread);
     busyUntil = out.exitIndex;
     trades.push({ i: c.i, t: bars.t[c.i], dir: c.dir, result: out.result, r: out.rNet, sr: o.spread / risk });
   }

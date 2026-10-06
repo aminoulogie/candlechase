@@ -125,9 +125,15 @@ export interface Leader {
   target: number;
   /** rule switched off, if any */
   off: string | null;
+  /** candle size the system ran on */
+  tf: 'm15' | 'h1' | 'h4';
+  /** multiple of the system's stop distance */
+  stopMult: number;
   early: StatBlock;
   recent: StatBlock;
   all: StatBlock;
+  /** its trades, compact (same coding as TradeFile) so the app can price them with your settings */
+  trades: { start: number; h: number[]; r: number[]; k: string };
 }
 
 export interface BacktestFile {
@@ -139,7 +145,10 @@ export interface BacktestFile {
   /** how many combinations the search tried, and the best that held up on unseen data */
   searched: number;
   significant: number;
+  /** held up before 2025 and since — most money first */
   leaders: Leader[];
+  /** held up before 2025 and since — highest win rate first */
+  winLeaders: Leader[];
 }
 
 /**
