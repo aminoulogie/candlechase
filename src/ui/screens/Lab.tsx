@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { coreRules, gapGuard, scan, SPLIT_T, stats, trade, verdict, VERDICT_TEXT } from '../../engine/backtest';
 import type { Candidate, StatBlock, Trade } from '../../engine/backtest';
+import type { Library } from '../../data/load';
+import { getSim, lastYears, simulateMoney } from '../../game/money';
+import { getState, update, useGame } from '../../game/store';
 import { buildSeries } from '../../engine/indicators';
 import { SYSTEMS } from '../../engine/systems';
 import { INSTRUMENTS, INSTRUMENT_ORDER, SYSTEM_ORDER } from '../../engine/types';
 import type { Bars, InstrumentId, Series, SystemId } from '../../engine/types';
 import { loadAll } from '../../data/load';
-import { luckLine, WinBar } from './Odds';
+import { luckLine, MoneyLine, SimBar, WinBar } from './Odds';
 
 const TARGETS = [1, 1.5, 2, 3];
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -18,6 +21,8 @@ const candCache = new Map<string, Candidate[]>();
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 interface Result {
+  trades: Trade[];
+  target: number;
   all: StatBlock;
   early: StatBlock;
   recent: StatBlock;
@@ -25,11 +30,18 @@ interface Result {
   label: string;
 }
 
-export function Lab() {
-  const [sys, setSys] = useState<SystemId>('ema');
-  const [markets, setMarkets] = useState<Set<InstrumentId>>(new Set(INSTRUMENT_ORDER));
-  const [target, setTarget] = useState(2);
-  const [off, setOff] = useState<Set<string>>(new Set());
+export function Lab({ lib }: { lib: Library }) {
+  // "Test it in the Lab" from the Odds tab arrives as a one-time preset.
+  const [preset] = useState(() => getState().labPreset ?? null);
+  useEffect(() => {
+    if (preset) update(() => ({ labPreset: null }));
+  }, [preset]);
+  const [sys, setSys] = useState<SystemId>((preset?.sys as SystemId) ?? 'ema');
+  const [markets, setMarkets] = useState<Set<InstrumentId>>(new Set((preset?.markets as InstrumentId[]) ?? INSTRUMENT_ORDER));
+  const [target, setTarget] = useState(preset?.target ?? 2);
+  const [off, setOff] = useState<Set<string>>(new Set(preset?.off ?? []));
+  const sim = getSim(useGame());
+  const endT = Math.max(...Object.values(lib.manifest.instruments).map((m) => m.last));
   const [busy, setBusy] = useState('');
   const [results, setResults] = useState<Result[]>([]);
 
@@ -74,6 +86,8 @@ export function Lab() {
     const label = `${def.name} · ${target}R · ${[...markets].map((m) => INSTRUMENTS[m].name).join(', ')}${off.size ? ` · without: ${[...off].map((id) => rules.find((r) => r.id === id)?.title ?? id).join('; ')}` : ''}`;
     setResults([
       {
+        trades,
+        target,
         all: stats(trades, target),
         early: stats(
           trades.filter((t) => t.t < SPLIT_T),
@@ -165,6 +179,8 @@ export function Lab() {
         </button>
       </section>
 
+      <SimBar showTarget={false} />
+
       {latest ? (
         <section className="card lab-result">
           <div className="eyebrow">Result</div>
@@ -217,6 +233,18 @@ export function Lab() {
               })}
             </tbody>
           </table>
+          {(() => {
+            const inPeriod = lastYears(latest.trades, sim.years, endT);
+            const m = simulateMoney(inPeriod, sim.balance, sim.risk);
+            return (
+              <div className="lab-money">
+                <div className="eyebrow">
+                  Last {sim.years} year{sim.years > 1 ? 's' : ''} · {sim.risk}% risk · win {+(latest.target * sim.risk).toFixed(2)}% · {m.trades} trades
+                </div>
+                <MoneyLine m={m} />
+              </div>
+            );
+          })()}
           <p className="hint">
             <b>{VERDICT_TEXT[verdict(latest.all, latest.recent)]}.</b> {luckLine(latest.all)} Worst losing streak {latest.all.maxLosingStreak}.
           </p>

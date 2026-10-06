@@ -51,8 +51,29 @@ export interface Settings {
   valuePerUnit: Partial<Record<InstrumentId, number>>;
 }
 
+export interface SimSettings {
+  /** starting account, in account currency */
+  balance: number;
+  /** % of the account risked per trade */
+  risk: number;
+  /** look back this many years */
+  years: number;
+  /** target as a multiple of the risk */
+  target: number;
+}
+
+export interface LabPreset {
+  sys: string;
+  markets: string[];
+  target: number;
+  off: string[];
+}
+
 export interface State {
   v: 1;
+  sim?: SimSettings;
+  /** set by "Try it in the Lab", read once by the Lab */
+  labPreset?: LabPreset | null;
   attempts: Attempt[];
   srs: Record<string, SrsItem>;
   xp: number;

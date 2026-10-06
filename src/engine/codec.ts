@@ -118,10 +118,36 @@ export interface BacktestRow {
   recent: StatBlock;
 }
 
+/** One combination from the search over systems, markets, targets and switched-off rules. */
+export interface Leader {
+  sys: string;
+  x: string;
+  target: number;
+  /** rule switched off, if any */
+  off: string | null;
+  early: StatBlock;
+  recent: StatBlock;
+  all: StatBlock;
+}
+
 export interface BacktestFile {
   generated: string;
   from: string;
   to: string;
   split: string;
   rows: BacktestRow[];
+  /** how many combinations the search tried, and the best that held up on unseen data */
+  searched: number;
+  significant: number;
+  leaders: Leader[];
+}
+
+/**
+ * Every trade of every system (for the money simulator), keyed 'sys:market'.
+ * Times are hours since `start`, delta-coded; R is in hundredths.
+ */
+export interface TradeFile {
+  start: number;
+  /** k: one letter per trade — w(in), l(oss), o(pen after 2 days) */
+  rows: Record<string, { seen: number[]; byTarget: Record<string, { h: number[]; r: number[]; k: string }> }>;
 }

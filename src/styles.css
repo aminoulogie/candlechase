@@ -1666,3 +1666,110 @@ button {
 .lab-result .hint {
   margin: 0;
 }
+
+/* ---------- money simulator ---------- */
+
+.simbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sim-balance {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sim-balance span,
+.sim-row > span {
+  width: 58px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sim-balance input {
+  font-size: 18px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.sim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sim-row .chip {
+  min-height: 34px;
+  padding: 0 12px;
+}
+.simbar .hint {
+  margin: 0;
+}
+.money-line {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.money-line div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.money-line small {
+  font-size: 11px;
+}
+.money-line b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.lab-money {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lab-money .eyebrow {
+  margin: 0;
+}
+
+/* ---------- leaders ---------- */
+
+.leaders {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+.leaders .hint {
+  margin: 0 0 10px;
+}
+.leader-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.leader-list li::marker {
+  color: var(--accent);
+  font-weight: 800;
+}
+.leader-name {
+  display: flex;
+  flex-direction: column;
+}
+.leader-nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.leader-nums b {
+  font-variant-numeric: tabular-nums;
+}

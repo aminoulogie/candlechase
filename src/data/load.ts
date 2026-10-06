@@ -1,5 +1,5 @@
 import { CHUNK, concatBars, decodeChunk } from '../engine/codec';
-import type { BacktestFile, Chunk, Drill, DrillFile, Manifest } from '../engine/codec';
+import type { BacktestFile, Chunk, Drill, DrillFile, Manifest, TradeFile } from '../engine/codec';
 import { LOOKAHEAD, WARMUP, windowSeries } from '../engine/indicators';
 import type { Bars, Series } from '../engine/types';
 
@@ -79,4 +79,40 @@ export function loadAll(x: string): Promise<Bars> {
     full.set(x, p);
   }
   return full.get(x)!;
+}
+
+export interface SimTrade {
+  t: number;
+  r: number;
+  result: 'win' | 'loss' | 'open';
+}
+
+export interface TradeBook {
+  /** unix seconds of every time the setup appeared */
+  seen: number[];
+  byTarget: Record<string, SimTrade[]>;
+}
+
+let trades: Promise<Map<string, TradeBook>> | null = null;
+
+/** Every backtest trade, keyed 'system:market' (loaded on demand: ~0.5 MB). */
+export function loadTrades(): Promise<Map<string, TradeBook>> {
+  trades ??= getJson<TradeFile>('trades.json').then((f) => {
+    const undelta = (d: number[]) => {
+      let h = 0;
+      return d.map((x) => f.start + (h += x) * 3600);
+    };
+    const out = new Map<string, TradeBook>();
+    for (const [key, row] of Object.entries(f.rows)) {
+      const byTarget: TradeBook['byTarget'] = {};
+      for (const [r, l] of Object.entries(row.byTarget)) {
+        const ts = undelta(l.h);
+        byTarget[r] = ts.map((t, k) => ({ t, r: l.r[k] / 100, result: l.k[k] === 'w' ? 'win' : l.k[k] === 'l' ? 'loss' : 'open' }));
+      }
+      out.set(key, { seen: undelta(row.seen), byTarget });
+    }
+    return out;
+  });
+  trades.catch(() => (trades = null));
+  return trades;
 }

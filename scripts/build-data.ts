@@ -2,10 +2,10 @@
 //   chunks of candles, the drill list, and the 5-year statistics of each system.
 // Usage: tsx scripts/build-data.ts [rawDir] [outDir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { gapGuard, scan, SPLIT_T, stats, trade } from '../src/engine/backtest';
+import { coreRules, gapGuard, scan, SPLIT_T, stats, trade } from '../src/engine/backtest';
 import type { Candidate, Trade } from '../src/engine/backtest';
 import { CHUNK, encodeChunk } from '../src/engine/codec';
-import type { BacktestFile, BacktestRow, Drill, DrillFile, Manifest } from '../src/engine/codec';
+import type { BacktestFile, BacktestRow, Drill, DrillFile, Leader, Manifest, TradeFile } from '../src/engine/codec';
 import { evaluate } from '../src/engine/evaluate';
 import { buildSeries, windowSeries } from '../src/engine/indicators';
 import { simulate } from '../src/engine/outcome';
@@ -111,6 +111,9 @@ function main() {
   const pooledSeen: Record<string, number> = {};
   let firstT = Infinity;
   let lastT = 0;
+  // per-trade lists for the money simulator, and the search over variants
+  const tradeLists: Record<string, { seen: number[]; byTarget: Record<string, Trade[]> }> = {};
+  const combos: Leader[] = [];
 
   for (const id of INSTRUMENT_ORDER) {
     const file = `${RAW}/${id}.json`;
@@ -155,6 +158,30 @@ function main() {
         perTarget[String(r)] = res.trades;
         seen = res.seen;
       }
+      tradeLists[`${sys}:${id}`] = { seen: cands[sys].filter((c) => !c.failed.length).map((c) => bars.t[c.i]), byTarget: perTarget };
+
+      // Search: each target, with nothing or one non-core rule switched off.
+      const core = new Set(coreRules(sys));
+      const offs: (string | null)[] = [null, ...SYSTEMS[sys].rules.filter((r) => r.kind === 'chart' && !core.has(r.id)).map((r) => r.id)];
+      for (const off of offs)
+        for (const r of TARGETS) {
+          const tr = off === null ? perTarget[String(r)] : trade(bars, cands[sys], { targetR: r, spread: meta.spread, disabled: new Set([off]) }).trades;
+          combos.push({
+            sys,
+            x: id,
+            target: r,
+            off,
+            early: stats(
+              tr.filter((t) => t.t < SPLIT_T),
+              r,
+            ),
+            recent: stats(
+              tr.filter((t) => t.t >= SPLIT_T),
+              r,
+            ),
+            all: stats(tr, r),
+          });
+        }
       rows.push(row(sys, id, perTarget, seen));
       pooled[sys] ??= {};
       for (const r of TARGETS) (pooled[sys][String(r)] ??= []).push(...perTarget[String(r)]);
@@ -200,13 +227,38 @@ function main() {
   }
 
   const drillFile: DrillFile = { generated: manifest.generated, drills };
+  // Leaders: positive before 2025 AND since, enough trades in each, least likely to be luck first.
+  const leaders = combos
+    .filter((c) => c.early.trades >= 40 && c.recent.trades >= 40 && c.early.avgR > 0 && c.recent.avgR > 0)
+    .sort((a, b) => a.all.pValue - b.all.pValue)
+    .slice(0, 10);
   const bt: BacktestFile = {
     generated: manifest.generated,
     from: new Date(firstT * 1000).toISOString().slice(0, 10),
     to: new Date(lastT * 1000).toISOString().slice(0, 10),
     split: new Date(SPLIT_T * 1000).toISOString().slice(0, 10),
     rows,
+    searched: combos.length,
+    significant: combos.filter((c) => c.all.trades >= 60 && c.all.avgR > 0 && c.all.pValue < 0.05).length,
+    leaders,
   };
+  const start = Math.floor(firstT / 3600) * 3600;
+  const tf: TradeFile = { start, rows: {} };
+  const deltas = (ts: number[]) => {
+    let prev = 0;
+    return ts.map((t) => {
+      const h = Math.round((t - start) / 3600);
+      const d = h - prev;
+      prev = h;
+      return d;
+    });
+  };
+  for (const [k, v] of Object.entries(tradeLists)) {
+    const byTarget: TradeFile['rows'][string]['byTarget'] = {};
+    for (const [r, list] of Object.entries(v.byTarget)) byTarget[r] = { h: deltas(list.map((t) => t.t)), r: list.map((t) => Math.round(t.r * 100)), k: list.map((t) => t.result[0]).join('') };
+    tf.rows[k] = { seen: deltas(v.seen), byTarget };
+  }
+  writeFileSync(`${OUT}/trades.json`, JSON.stringify(tf));
   writeFileSync(`${OUT}/manifest.json`, JSON.stringify(manifest));
   writeFileSync(`${OUT}/drills.json`, JSON.stringify(drillFile));
   writeFileSync(`${OUT}/backtest.json`, JSON.stringify(bt));

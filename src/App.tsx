@@ -3,7 +3,7 @@ import type { Drill } from './engine/codec';
 import { loadLibrary } from './data/load';
 import type { Library } from './data/load';
 import { pickDrills } from './game/pick';
-import { getState } from './game/store';
+import { getState, update } from './game/store';
 import { Loading } from './ui/common';
 import { Checklist } from './ui/modes/Checklist';
 import { Place } from './ui/modes/Place';
@@ -85,8 +85,16 @@ export function App() {
       <main className="main">
         {tab === 'train' && <Home lib={lib} onStart={start} />}
         {tab === 'rules' && <Rules />}
-        {tab === 'odds' && <Odds lib={lib} />}
-        {tab === 'lab' && <Lab />}
+        {tab === 'odds' && (
+          <Odds
+            lib={lib}
+            onTryInLab={(p) => {
+              update(() => ({ labPreset: p }));
+              setTab('lab');
+            }}
+          />
+        )}
+        {tab === 'lab' && <Lab lib={lib} />}
         {tab === 'me' && <Me onOpenLog={() => setTab('log')} />}
         {tab === 'log' && <Log onBack={() => setTab('me')} />}
       </main>
