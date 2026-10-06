@@ -16,7 +16,7 @@ const MODES: { mode: Mode; name: string; blurb: string; icon: string; trades?: b
   { mode: 'replay', name: 'Replay', blurb: 'Candles arrive one by one. Pull the trigger at the right close.', icon: '▶', trades: true },
   { mode: 'checklist', name: 'Checklist', blurb: 'Tick every rule on a real chart. Each tick is graded.', icon: '☑' },
   { mode: 'place', name: 'Place it', blurb: 'Set the stop, target and lot size. Scored on the order.', icon: '⌖', trades: true },
-  { mode: 'quiz', name: 'Exam', blurb: '10 charts, all 4 systems. Score at the end.', icon: '✎' },
+  { mode: 'quiz', name: 'Exam', blurb: '10 charts, one per system, 4 choices each. Score at the end.', icon: '✎' },
 ];
 
 export function Home({ lib, onStart }: { lib: Library; onStart: (o: StartOpts) => void }) {

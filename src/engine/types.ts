@@ -4,9 +4,10 @@
 /** 1 = buy, -1 = sell */
 export type Dir = 1 | -1;
 
-export type SystemId = 'ema' | 'sr' | 'rsi' | 'session';
+export type SystemId = 'ema' | 'sr' | 'rsi' | 'session' | 'bb' | 'macd' | 'donchian' | 'inside' | 'pin' | 'nyorb';
 
-export const SYSTEM_ORDER: SystemId[] = ['ema', 'sr', 'rsi', 'session'];
+/** Training order: the trader's four first, then the six added for comparison. */
+export const SYSTEM_ORDER: SystemId[] = ['ema', 'sr', 'rsi', 'session', 'bb', 'macd', 'donchian', 'inside', 'pin', 'nyorb'];
 
 export type InstrumentId = 'eurusd' | 'xauusd' | 'nas100';
 
@@ -30,6 +31,13 @@ export interface Series extends Bars {
   pl2: Uint8Array;
   ph5: Uint8Array;
   pl5: Uint8Array;
+  /** Bollinger Bands (20, 2) */
+  bbMid: number[];
+  bbUp: number[];
+  bbLo: number[];
+  /** MACD (12, 26, 9) */
+  macd: number[];
+  macdSig: number[];
 }
 
 /** 'chart' rules are checked by code; 'live' rules are yours to check when trading for real. */

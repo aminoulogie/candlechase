@@ -1,9 +1,6 @@
 import { useRef, useState } from 'react';
-import type { BacktestRow } from '../../engine/codec';
 import { SYSTEMS } from '../../engine/systems';
-import { INSTRUMENTS, INSTRUMENT_ORDER, SYSTEM_ORDER } from '../../engine/types';
-import type { InstrumentId, SystemId } from '../../engine/types';
-import type { Library } from '../../data/load';
+import { INSTRUMENTS, INSTRUMENT_ORDER } from '../../engine/types';
 import { money, valuePerUnit } from '../../game/account';
 import { systemProgress } from '../../game/progress';
 import { exportState, importState, resetAll, update, useGame } from '../../game/store';
@@ -12,64 +9,8 @@ import type { Mode } from '../../game/store';
 
 const MODE_NAMES: Record<Mode, string> = { spot: 'Spot it', replay: 'Replay', checklist: 'Checklist', place: 'Place it', quiz: 'Exam' };
 
-function Spark({ values }: { values: number[] }) {
-  if (values.length < 2) return <svg className="spark" />;
-  const min = Math.min(0, ...values);
-  const max = Math.max(0, ...values);
-  const span = max - min || 1;
-  const x = (k: number) => (k / (values.length - 1)) * 100;
-  const y = (v: number) => 28 - ((v - min) / span) * 26;
-  const d = values.map((v, k) => `${k ? 'L' : 'M'}${x(k).toFixed(1)},${y(v).toFixed(1)}`).join('');
-  const last = values[values.length - 1];
-  return (
-    <svg className="spark" viewBox="0 0 100 30" preserveAspectRatio="none">
-      <line x1="0" x2="100" y1={y(0)} y2={y(0)} className="spark-zero" />
-      <path d={d} className={last >= 0 ? 'spark-up' : 'spark-down'} />
-    </svg>
-  );
-}
-
-function BacktestCard({ sys, rows }: { sys: SystemId; rows: BacktestRow[] }) {
-  const all = rows.reduce((a, r) => ({ trades: a.trades + r.trades, total: a.total + r.totalR }), { trades: 0, total: 0 });
-  const avg = all.trades ? all.total / all.trades : 0;
-  const verdict = all.trades < 30 ? 'Too few trades to judge' : avg > 0.1 ? 'Has had an edge' : avg > 0 ? 'Barely positive — thin edge' : 'Lost money after spread';
-  return (
-    <div className="bt-card">
-      <div className="bt-head">
-        <b className={`sys-text-${sys}`}>{SYSTEMS[sys].name}</b>
-        <span className={avg > 0 ? 'tag ok' : 'tag bad'}>{verdict}</span>
-      </div>
-      <table className="bt">
-        <thead>
-          <tr>
-            <th>Market</th>
-            <th>Trades</th>
-            <th>Win</th>
-            <th>Avg</th>
-            <th>Total</th>
-            <th>Worst run</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.x}>
-              <td>{INSTRUMENTS[r.x as InstrumentId].name}</td>
-              <td>{r.trades}</td>
-              <td>{Math.round(r.winRate * 100)}%</td>
-              <td className={r.avgR >= 0 ? 'up-text' : 'down-text'}>{r.avgR >= 0 ? '+' : ''}{r.avgR.toFixed(2)}R</td>
-              <td className={r.totalR >= 0 ? 'up-text' : 'down-text'}>{r.totalR >= 0 ? '+' : ''}{r.totalR.toFixed(0)}R</td>
-              <td>{r.maxLosingStreak} losses</td>
-              <td className="spark-cell"><Spark values={r.curve} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export function Stats({ lib }: { lib: Library }) {
+/** Your progress, practice account, live log and settings. */
+export function Me({ onOpenLog }: { onOpenLog: () => void }) {
   const s = useGame();
   const prog = systemProgress(s);
   const [msg, setMsg] = useState('');
@@ -81,7 +22,6 @@ export function Stats({ lib }: { lib: Library }) {
     return { m, n: a.length, acc: last.length ? last.filter((x) => x.ok).length / last.length : null };
   });
   const clean = s.trades.length ? s.trades.filter((t) => t.clean).length / s.trades.length : null;
-  const bt = lib.backtest;
 
   const download = () => {
     const blob = new Blob([exportState()], { type: 'application/json' });
@@ -93,7 +33,7 @@ export function Stats({ lib }: { lib: Library }) {
 
   return (
     <div className="screen">
-      <h1 className="screen-title">Stats</h1>
+      <h1 className="screen-title">Me</h1>
 
       <section className="card">
         <div className="eyebrow">Your skill</div>
@@ -131,14 +71,11 @@ export function Stats({ lib }: { lib: Library }) {
       </section>
 
       <section className="card">
-        <div className="eyebrow">Do the systems work?</div>
-        <p className="hint">
-          Every valid setup from {bt.from} to {bt.to}, one trade at a time per system, stop as the rules say, target 2R, spread included. If a candle
-          touched both the stop and the target, it counts as a loss. Past results are not a promise — this shows which systems deserve your attention.
-        </p>
-        {SYSTEM_ORDER.map((sys) => (
-          <BacktestCard key={sys} sys={sys} rows={INSTRUMENT_ORDER.map((x) => bt.rows.find((r) => r.sys === sys && r.x === x)).filter((r): r is BacktestRow => !!r)} />
-        ))}
+        <div className="eyebrow">Live trades</div>
+        <p className="hint">Log real trades and see whether the game is carrying over to how you trade.</p>
+        <button className="btn ghost wide" onClick={onOpenLog}>
+          Open live log
+        </button>
       </section>
 
       <section className="card settings">

@@ -26,32 +26,34 @@ const LIVE_ORDER = {
   kind: 'live' as const,
 };
 
-const HOURS = {
+// `upgrade` marks rules added on top of the trader's own EMA checklist; the
+// other systems are drafted whole, so their versions carry no such label.
+const HOURS_BASE = {
   id: 'hours',
   title: 'London or New York is open',
   sub: 'Asian-hours moves on M15 are mostly noise.',
   precise: 'Trigger candle between 07:00 and 20:00 UTC.',
   kind: 'chart' as const,
-  upgrade: true,
 };
+const HOURS = { ...HOURS_BASE, upgrade: true };
 
-const HTF = {
+const HTF_BASE = {
   id: 'htf',
   title: 'The bigger trend agrees',
   sub: 'An M15 setup against the hourly trend is swimming upstream.',
   precise: 'Price above EMA200 to buy, below to sell (EMA200 on M15 ≈ EMA50 on H1).',
   kind: 'chart' as const,
-  upgrade: true,
 };
+const HTF = { ...HTF_BASE, upgrade: true };
 
-const stopRule = (where: string) => ({
+const stopBase = (where: string) => ({
   id: 'stop',
   title: 'The stop has a real place to go',
   sub: `${where} Target is 2× the risk.`,
   precise: 'Stop distance between 0.5 and 3 ATR. Tighter gets hit by noise, wider is a different trade.',
   kind: 'chart' as const,
-  upgrade: true,
 });
+const stopRule = (where: string) => ({ ...stopBase(where), upgrade: true });
 
 export const SYSTEMS: Record<SystemId, SystemDef> = {
   ema: {
@@ -149,8 +151,8 @@ export const SYSTEMS: Record<SystemId, SystemDef> = {
       LIVE_CLOSED,
       LIVE_NEWS,
       LIVE_ORDER,
-      HOURS,
-      stopRule('Stop goes beyond the level by 0.3 ATR, or past the trigger candle, whichever is further.'),
+      HOURS_BASE,
+      stopBase('Stop goes beyond the level by 0.3 ATR, or past the trigger candle, whichever is further.'),
     ],
   },
   rsi: {
@@ -198,8 +200,8 @@ export const SYSTEMS: Record<SystemId, SystemDef> = {
       LIVE_CLOSED,
       LIVE_NEWS,
       LIVE_ORDER,
-      HOURS,
-      stopRule('Stop goes beyond the second swing by 0.2 ATR.'),
+      HOURS_BASE,
+      stopBase('Stop goes beyond the second swing by 0.2 ATR.'),
     ],
   },
   session: {
@@ -251,7 +253,235 @@ export const SYSTEMS: Record<SystemId, SystemDef> = {
       LIVE_CLOSED,
       LIVE_NEWS,
       LIVE_ORDER,
-      stopRule('Stop goes at the middle of the Asian range.'),
+      stopBase('Stop goes at the middle of the Asian range.'),
+    ],
+  },
+  bb: {
+    id: 'bb',
+    name: 'Bollinger Snap-back',
+    family: 'Mean reversion',
+    tagline: 'Price stretches outside the band, then snaps back inside. Trade the return to normal.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'stretch',
+        title: 'The candle before closed OUTSIDE the band',
+        sub: 'Below the lower band to buy, above the upper band to sell. A wick outside is not a stretch.',
+        precise: 'Bollinger Bands 20, 2. Previous close beyond the band.',
+        kind: 'chart',
+      },
+      {
+        id: 'trigger',
+        title: 'This candle CLOSED back inside the band',
+        sub: 'Green and back above the lower band to buy; red and back below the upper band to sell.',
+        kind: 'chart',
+      },
+      {
+        id: 'rsi',
+        title: 'RSI was at an extreme on the stretch',
+        sub: 'Under 30 to buy, over 70 to sell. Without it the stretch is just a strong move.',
+        precise: 'RSI(14) on the stretch candle.',
+        kind: 'chart',
+      },
+      {
+        id: 'calm',
+        title: 'The market is not trending hard',
+        sub: 'Snap-backs work in ranges. In a runaway trend price walks along the band.',
+        precise: 'EMA50 moved less than 2 ATR over the last 20 candles.',
+        kind: 'chart',
+      },
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      HOURS_BASE,
+      stopBase('Stop goes beyond the stretch extreme, plus 0.1 ATR.'),
+    ],
+  },
+  macd: {
+    id: 'macd',
+    name: 'MACD Trend Cross',
+    family: 'Momentum',
+    tagline: 'In an uptrend, the MACD dips below zero and crosses back up. The dip is over.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'trigger',
+        title: 'MACD crossed its signal line on this candle',
+        sub: 'Crossing up to buy, crossing down to sell.',
+        precise: 'MACD 12, 26, 9. Above the signal now, at or below it one candle ago (mirror to sell).',
+        kind: 'chart',
+      },
+      {
+        id: 'zero',
+        title: 'The cross happened on the far side of zero',
+        sub: 'Below zero to buy, above zero to sell. That makes it a dip in a trend, not a chase.',
+        kind: 'chart',
+      },
+      {
+        id: 'ema',
+        title: 'Price closed on the right side of EMA50',
+        sub: 'Above to buy, below to sell. The short trend has turned back your way.',
+        kind: 'chart',
+      },
+      HTF_BASE,
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      HOURS_BASE,
+      stopBase('Stop goes beyond the extreme of the last 10 candles, plus 0.1 ATR.'),
+    ],
+  },
+  donchian: {
+    id: 'donchian',
+    name: 'Donchian Breakout',
+    family: 'Trend breakout',
+    tagline: 'Price has been boxed in for 5 hours. A close above the box starts the next leg.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'trigger',
+        title: 'A candle CLOSED above the 20-candle high',
+        sub: 'Above the highest high of the last 20 candles to buy, below the lowest low to sell.',
+        kind: 'chart',
+      },
+      {
+        id: 'quiet',
+        title: 'The box was quiet',
+        sub: 'A tight box stores energy. A wide one has already moved.',
+        precise: '20-candle high minus low between 2 and 8 ATR.',
+        kind: 'chart',
+      },
+      {
+        id: 'fresh',
+        title: 'It is a fresh breakout',
+        sub: 'No close outside the box in the 10 candles before. Late breakouts are chases.',
+        kind: 'chart',
+      },
+      {
+        id: 'body',
+        title: 'The breakout candle is strong',
+        sub: 'Body at least half of the candle.',
+        kind: 'chart',
+      },
+      HTF_BASE,
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      HOURS_BASE,
+      stopBase('Stop goes at the middle of the box.'),
+    ],
+  },
+  inside: {
+    id: 'inside',
+    name: 'Inside Bar Breakout',
+    family: 'Price action',
+    tagline: 'A big candle, then a small one inside it: the market pauses. Trade the side it breaks.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'mother',
+        title: 'Two candles ago was a big "mother" candle',
+        sub: 'Its range is at least 1.2 ATR.',
+        kind: 'chart',
+      },
+      {
+        id: 'inside',
+        title: 'The next candle stayed completely inside it',
+        sub: 'High no higher, low no lower than the mother candle.',
+        kind: 'chart',
+      },
+      {
+        id: 'trigger',
+        title: 'This candle CLOSED outside the mother candle',
+        sub: 'Above its high to buy, below its low to sell.',
+        kind: 'chart',
+      },
+      {
+        id: 'trend',
+        title: 'EMA20 is on the right side of EMA50',
+        sub: 'Above to buy, below to sell. Trade the break that goes with the trend.',
+        kind: 'chart',
+      },
+      HTF_BASE,
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      HOURS_BASE,
+      stopBase('Stop goes beyond the inside candle, plus 0.1 ATR.'),
+    ],
+  },
+  pin: {
+    id: 'pin',
+    name: 'Pin Bar Rejection',
+    family: 'Price action at a level',
+    tagline: 'Price stabs through a level and gets thrown back. The long wick is the rejection.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'trigger',
+        title: 'This candle is a pin bar',
+        sub: 'Long lower wick and a close in the top third to buy; long upper wick, close in the bottom third to sell.',
+        precise: 'Wick at least 2× the body and at least 60% of the candle.',
+        kind: 'chart',
+      },
+      {
+        id: 'level',
+        title: 'The wick tested a real level',
+        sub: 'The wick reached an earlier swing low (high, to sell). A pin bar in the middle of nowhere means little.',
+        precise: 'A swing point (5 candles each side) from the last 200 candles within 0.3 ATR of the wick.',
+        kind: 'chart',
+      },
+      {
+        id: 'extreme',
+        title: 'The wick made the lowest point of the last 10 candles',
+        sub: 'Highest point, to sell. It swept the stops below, then got rejected.',
+        kind: 'chart',
+      },
+      HTF_BASE,
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      HOURS_BASE,
+      stopBase('Stop goes beyond the wick, plus 0.1 ATR.'),
+    ],
+  },
+  nyorb: {
+    id: 'nyorb',
+    name: 'NY Open Breakout',
+    family: 'Session',
+    tagline: 'New York opens, the first 30 minutes set a range. The first clean close outside it leads.',
+    triggerRule: 'trigger',
+    rules: [
+      {
+        id: 'size',
+        title: 'The opening range is a normal size',
+        sub: 'Not a tiny doji pair, not an already-exploded move.',
+        precise: 'First 30 minutes after the NY stock open (13:30 UTC in US summer, 14:30 in winter): 0.8–3 ATR high.',
+        kind: 'chart',
+      },
+      {
+        id: 'window',
+        title: 'It is within 90 minutes of the range',
+        sub: 'Late breaks lose the opening momentum.',
+        kind: 'chart',
+      },
+      {
+        id: 'trigger',
+        title: 'A candle CLOSED outside the opening range',
+        sub: 'Above the high to buy, below the low to sell, by at least 0.1 ATR.',
+        kind: 'chart',
+      },
+      {
+        id: 'first',
+        title: 'It is the first break after the open',
+        sub: 'If price already closed outside on either side, the clean break is gone.',
+        kind: 'chart',
+      },
+      HTF_BASE,
+      LIVE_CLOSED,
+      LIVE_NEWS,
+      LIVE_ORDER,
+      stopBase('Stop goes at the middle of the opening range.'),
     ],
   },
 };

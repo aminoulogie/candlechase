@@ -4,7 +4,7 @@ import { SYSTEM_ORDER } from '../../engine/types';
 import type { SystemId } from '../../engine/types';
 import { recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, forceFor, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -63,12 +63,24 @@ export function Quiz({ drills, onExit }: { drills: Drill[]; onExit: () => void }
   );
 }
 
+/** The right system plus three others it could be confused with. */
+function optionsFor(d: Drill): SystemId[] {
+  const others = SYSTEM_ORDER.filter((s) => s !== d.s && !d.a?.includes(s));
+  for (let k = others.length - 1; k > 0; k--) {
+    const j = Math.floor(Math.random() * (k + 1));
+    [others[k], others[j]] = [others[j], others[k]];
+  }
+  const opts = [d.s as SystemId, ...others.slice(0, 3)];
+  return opts.sort((a, b) => SYSTEM_ORDER.indexOf(a) - SYSTEM_ORDER.indexOf(b));
+}
+
 function QuizOne({ d, step, total, onExit, onAnswer }: { d: Drill; step: number; total: number; onExit: () => void; onAnswer: (s: SystemId) => void }) {
   const ld = useDrill(d);
+  const options = useMemo(() => optionsFor(d), [d]);
   usePracticeClock(d.id, !!ld);
   return (
     <div className="drill">
-      <TopBar title="Exam · all 4 systems" step={step} total={total} onExit={onExit} />
+      <TopBar title="Exam · all 10 systems" step={step} total={total} onExit={onExit} />
       <div className="chart-wrap">
         {ld ? <Chart s={ld.w.s} upto={ld.w.li} digits={ld.w.digits} showDate={false} /> : <Loading />}
         <div className="chart-label">M15 · date hidden</div>
@@ -76,7 +88,7 @@ function QuizOne({ d, step, total, onExit, onAnswer }: { d: Drill; step: number;
       <div className="panel">
         <p className="prompt">The last candle is a setup. Which system is it?</p>
         <div className="sys-grid">
-          {SYSTEM_ORDER.map((s) => (
+          {options.map((s) => (
             <button key={s} className={`btn sys sys-${s}`} disabled={!ld} onClick={() => onAnswer(s)}>
               {sysName(s)}
             </button>
@@ -99,7 +111,7 @@ function QuizReview({ d, answer, onBack }: { d: Drill; answer: SystemId; onBack:
     <div className="drill">
       <TopBar title="Review" onExit={onBack} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate {...(ov ?? {})} focus={focus} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate {...(ov ?? {})} focus={focus} force={forceFor(d.s)} /> : <Loading />}
         <div className="chart-label">{ld ? revealLabel(ld.w) : ''}</div>
       </div>
       <div className="panel">

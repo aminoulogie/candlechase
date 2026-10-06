@@ -5,7 +5,7 @@ import type { SystemId } from '../../engine/types';
 import { timerFor } from '../../game/progress';
 import { getState, recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, forceFor, useFocus, dirName, Loading, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { cssVar, revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -64,7 +64,7 @@ function ChecklistOne({ d, step, total, onExit, onNext }: { d: Drill; step: numb
     <div className="drill">
       <TopBar title="Checklist drill" step={step} total={total} onExit={onExit} right={left !== null && !revealed ? <span className={left <= 5 ? 'timer hot' : 'timer'}>{left}s</span> : null} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} force={forceFor(sys)} /> : <Loading />}
         <div className="chart-label">{revealed && ld ? revealLabel(ld.w) : 'M15 · date hidden'}</div>
       </div>
       <div className="panel" key={revealed ? 'after' : 'before'}>

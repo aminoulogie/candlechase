@@ -226,5 +226,140 @@ export function explainRule(s: Series, e: Evaluation, id: string, digits: number
         return stopRule();
     }
   }
+  const bodyRule = (): Explanation => ({
+    text: `The body is ${(n('body') * 100).toFixed(0)}% of the candle and must be ${buy ? 'green' : 'red'} and at least 50%. ${ok(met)}`,
+    bars: [],
+  });
+
+  if (e.sys === 'bb') {
+    switch (id) {
+      case 'stretch':
+        return {
+          text: `The candle before closed at ${f(s.c[i - 1])}; the ${buy ? 'lower' : 'upper'} band was ${f(buy ? s.bbLo[i - 1] : s.bbUp[i - 1])}. It must close ${buy ? 'below' : 'above'} the band. ${ok(met)}`,
+          bars: [{ i: i - 1, label: 'Stretch', above: !buy }],
+        };
+      case 'trigger':
+        return {
+          text: `This candle closed ${s.c[i] > s.o[i] ? 'green' : 'red'} at ${f(s.c[i])}; the band is at ${f(buy ? s.bbLo[i] : s.bbUp[i])}. It must close ${buy ? 'green and above' : 'red and below'} it. ${ok(met)}`,
+          bars: [],
+        };
+      case 'rsi':
+        return { text: `RSI on the stretch candle was ${s.rsi[i - 1].toFixed(0)}. It must be ${buy ? 'under 30' : 'over 70'}. ${ok(met)}`, bars: [] };
+      case 'calm':
+        return { text: `EMA50 moved ${n('drift').toFixed(1)} ATR over the last 20 candles. Under 2 means no strong trend. ${ok(met)}`, bars: [{ i: i - 20, label: '20 back', above: !buy }] };
+      case 'hours':
+        return hours();
+      case 'stop':
+        return stopRule();
+    }
+  }
+
+  if (e.sys === 'macd') {
+    switch (id) {
+      case 'trigger':
+        return {
+          text: `MACD ${s.macd[i - 1].toFixed(digits + 1)} → ${s.macd[i].toFixed(digits + 1)}, signal ${s.macdSig[i - 1].toFixed(digits + 1)} → ${s.macdSig[i].toFixed(digits + 1)}. It must cross ${buy ? 'above' : 'below'} the signal on this candle. ${ok(met)}`,
+          bars: [],
+        };
+      case 'zero':
+        return { text: `MACD is ${s.macd[i] < 0 ? 'below' : 'above'} zero. To ${buy ? 'buy' : 'sell'} the cross must be ${buy ? 'below' : 'above'} zero. ${ok(met)}`, bars: [] };
+      case 'ema':
+        return { text: `Close ${f(s.c[i])} vs EMA50 ${f(s.ema50[i])}: must be ${side}. ${ok(met)}`, bars: [] };
+      case 'htf':
+        return htf();
+      case 'hours':
+        return hours();
+      case 'stop':
+        return stopRule();
+    }
+  }
+
+  if (e.sys === 'donchian') {
+    switch (id) {
+      case 'trigger':
+        return { text: `Close ${f(s.c[i])} vs the 20-candle ${buy ? 'high' : 'low'} ${f(buy ? n('hi') : n('lo'))}. It must close ${buy ? 'above' : 'below'}. ${ok(met)}`, bars: [{ i: i - 20, label: 'Box starts', above: !buy }] };
+      case 'quiet':
+        return { text: `The box is ${n('height').toFixed(1)} ATR tall (${f(n('lo'))}–${f(n('hi'))}). The rule wants 2–8 ATR. ${ok(met)}`, bars: [] };
+      case 'fresh':
+        return e.info.earlier !== undefined
+          ? { text: `At ${at(n('earlier'))} a candle already closed outside its box. This breakout is late. Not met.`, bars: [{ i: n('earlier'), label: 'Earlier break', above: buy }] }
+          : { text: 'No close outside the box in the 10 candles before. Met.', bars: [] };
+      case 'body':
+        return bodyRule();
+      case 'htf':
+        return htf();
+      case 'hours':
+        return hours();
+      case 'stop':
+        return stopRule();
+    }
+  }
+
+  if (e.sys === 'inside') {
+    const m = i - 2;
+    const k = i - 1;
+    switch (id) {
+      case 'mother':
+        return { text: `The mother candle (${at(m)}) is ${n('mother').toFixed(1)} ATR tall. It must be at least 1.2. ${ok(met)}`, bars: [{ i: m, label: 'Mother', above: !buy }] };
+      case 'inside':
+        return {
+          text: `Mother ${f(s.l[m])}–${f(s.h[m])}; next candle ${f(s.l[k])}–${f(s.h[k])}. It must stay fully inside. ${ok(met)}`,
+          bars: [{ i: k, label: 'Inside?', above: buy }],
+        };
+      case 'trigger':
+        return { text: `Close ${f(s.c[i])} vs the mother's ${buy ? 'high' : 'low'} ${f(buy ? s.h[m] : s.l[m])}. ${ok(met)}`, bars: [] };
+      case 'trend':
+        return { text: `EMA20 ${f(s.ema20[i])} vs EMA50 ${f(s.ema50[i])}: EMA20 must be ${side}. ${ok(met)}`, bars: [] };
+      case 'htf':
+        return htf();
+      case 'hours':
+        return hours();
+      case 'stop':
+        return stopRule();
+    }
+  }
+
+  if (e.sys === 'pin') {
+    switch (id) {
+      case 'trigger':
+        return {
+          text: `The ${buy ? 'lower' : 'upper'} wick is ${(n('wick') * 100).toFixed(0)}% of the candle and ${n('wickBody') >= 99 ? 'many' : n('wickBody').toFixed(1)}× the body. It needs 60% and 2×, with the close in the ${buy ? 'top' : 'bottom'} third. ${ok(met)}`,
+          bars: [],
+        };
+      case 'level':
+        return e.info.levelAt !== undefined
+          ? { text: `The wick reached the swing ${buy ? 'low' : 'high'} from ${at(n('levelAt'))} (${f(buy ? s.l[n('levelAt')] : s.h[n('levelAt')])}). Met.`, bars: [{ i: n('levelAt'), label: 'Level', above: !buy }] }
+          : { text: `No swing ${buy ? 'low' : 'high'} from the last 200 candles sits within 0.3 ATR of the wick. Not met.`, bars: [] };
+      case 'extreme':
+        return { text: `The wick ${met ? 'is' : 'is not'} the ${buy ? 'lowest' : 'highest'} point of the last 10 candles. ${ok(met)}`, bars: [{ i: i - 9, label: '10 back', above: !buy }] };
+      case 'htf':
+        return htf();
+      case 'hours':
+        return hours();
+      case 'stop':
+        return stopRule();
+    }
+  }
+
+  if (e.sys === 'nyorb') {
+    const hi = e.marks.rangeHigh;
+    const lo = e.marks.rangeLow;
+    switch (id) {
+      case 'size':
+        return { text: `The opening range ${hi === undefined ? '' : `(${f(lo!)}–${f(hi)}) `}is ${e.info.height === undefined ? '—' : n('height').toFixed(1)} ATR tall. The rule wants 0.8–3. ${ok(met)}`, bars: [] };
+      case 'window':
+        return { text: `The candle closed at ${at(i)} UTC. Breaks count for 90 minutes after the range. ${ok(met)}`, bars: [] };
+      case 'trigger':
+        return { text: `Close ${f(s.c[i])} vs range ${buy ? 'high' : 'low'} ${hi === undefined ? '—' : f(buy ? hi : lo!)}: must be at least 0.1 ATR ${buy ? 'above' : 'below'}. ${ok(met)}`, bars: [] };
+      case 'first':
+        return e.info.earlier !== undefined
+          ? { text: `At ${at(n('earlier'))} price already closed outside the range. Not the first break. Not met.`, bars: [{ i: n('earlier'), label: 'First break', above: buy }] }
+          : { text: 'No earlier close outside the range today. Met.', bars: [] };
+      case 'htf':
+        return htf();
+      case 'stop':
+        return stopRule();
+    }
+  }
   return null;
 }

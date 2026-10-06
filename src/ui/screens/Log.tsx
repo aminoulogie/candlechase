@@ -15,7 +15,7 @@ const followedAll = (t: LiveTrade) => {
   return rules.every((r) => t.rules[r.id]);
 };
 
-export function Log() {
+export function Log({ onBack }: { onBack?: () => void }) {
   const s = useGame();
   const [adding, setAdding] = useState(false);
   const last = s.live.slice(-GATE_TRADES);
@@ -29,7 +29,14 @@ export function Log() {
 
   return (
     <div className="screen">
-      <h1 className="screen-title">Live log</h1>
+      <h1 className="screen-title">
+        {onBack ? (
+          <button className="link" onClick={onBack}>
+            ‹ Me
+          </button>
+        ) : null}
+        Live log
+      </h1>
       <section className="card">
         <div className="eyebrow">Does the practice carry over?</div>
         <div className="acct-grid">

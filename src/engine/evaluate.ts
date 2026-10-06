@@ -421,6 +421,229 @@ export function evalSession(s: Series, i: number, dir: Dir): Evaluation {
   );
 }
 
+// ---------------------------------------------------------------- Bollinger Snap-back
+
+export function evalBb(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  const band = (j: number) => (d === 1 ? s.bbLo[j] : s.bbUp[j]);
+  pass.stretch = d * (s.c[i - 1] - band(i - 1)) < 0;
+  pass.trigger = d * (s.c[i] - band(i)) > 0 && d * (s.c[i] - s.o[i]) > 0;
+  pass.rsi = d === 1 ? s.rsi[i - 1] < 30 : s.rsi[i - 1] > 70;
+  info.drift = Math.abs(s.ema50[i] - s.ema50[i - 20]) / a;
+  pass.calm = (info.drift as number) < 2;
+  pass.hours = inHours(s, i);
+  const ext = d === 1 ? Math.min(s.l[i - 1], s.l[i]) : Math.max(s.h[i - 1], s.h[i]);
+  const entry = s.c[i];
+  const stop = ext - d * 0.1 * a;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  // a candidate needs the stretch-and-return shape; the trigger alone is every candle inside the band
+  return finish('bb', d, i, pass.trigger && pass.stretch, pass, entry, stop, { points: [{ i: i - 1, label: 'Stretch', above: d === -1 }] }, info);
+}
+
+// ---------------------------------------------------------------- MACD Trend Cross
+
+export function evalMacd(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  pass.trigger = d * (s.macd[i] - s.macdSig[i]) > 0 && d * (s.macd[i - 1] - s.macdSig[i - 1]) <= 0;
+  pass.zero = d * s.macd[i] < 0;
+  pass.ema = d * (s.c[i] - s.ema50[i]) > 0;
+  pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
+  pass.hours = inHours(s, i);
+  let ext = d === 1 ? Infinity : -Infinity;
+  let extI = i;
+  for (let j = i - 9; j <= i; j++) {
+    const v = d === 1 ? s.l[j] : s.h[j];
+    if (d * (ext - v) > 0) {
+      ext = v;
+      extI = j;
+    }
+  }
+  info.extAt = extI;
+  const entry = s.c[i];
+  const stop = ext - d * 0.1 * a;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  return finish('macd', d, i, pass.trigger, pass, entry, stop, { points: [{ i: extI, label: 'Swing', above: d === -1 }] }, info);
+}
+
+// ---------------------------------------------------------------- Donchian Breakout
+
+export function evalDonchian(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (let j = i - 20; j < i; j++) {
+    hi = Math.max(hi, s.h[j]);
+    lo = Math.min(lo, s.l[j]);
+  }
+  const edge = d === 1 ? hi : lo;
+  pass.trigger = d * (s.c[i] - edge) > 0;
+  info.hi = hi;
+  info.lo = lo;
+  info.height = (hi - lo) / a;
+  pass.quiet = (info.height as number) >= 2 && (info.height as number) <= 8;
+  // fresh: no close beyond its own 20-candle box in the 10 candles before
+  let earlier = -1;
+  for (let j = i - 10; j < i && earlier < 0; j++) {
+    let e = d === 1 ? -Infinity : Infinity;
+    for (let m = j - 20; m < j; m++) e = d === 1 ? Math.max(e, s.h[m]) : Math.min(e, s.l[m]);
+    if (d * (s.c[j] - e) > 0) earlier = j;
+  }
+  pass.fresh = earlier < 0;
+  if (earlier >= 0) info.earlier = earlier;
+  const span = s.h[i] - s.l[i];
+  info.body = span > 0 ? Math.abs(s.c[i] - s.o[i]) / span : 0;
+  pass.body = span > 0 && d * (s.c[i] - s.o[i]) >= 0.5 * span;
+  pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
+  pass.hours = inHours(s, i);
+  const entry = s.c[i];
+  const stop = (hi + lo) / 2;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  return finish('donchian', d, i, pass.trigger, pass, entry, stop, { rangeHigh: hi, rangeLow: lo, rangeFrom: i - 20, rangeTo: i - 1 }, info);
+}
+
+// ---------------------------------------------------------------- Inside Bar Breakout
+
+export function evalInside(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  const m = i - 2;
+  const k = i - 1;
+  info.mother = (s.h[m] - s.l[m]) / s.atr[m];
+  pass.mother = (info.mother as number) >= 1.2;
+  pass.inside = s.h[k] <= s.h[m] && s.l[k] >= s.l[m];
+  pass.trigger = d === 1 ? s.c[i] > s.h[m] : s.c[i] < s.l[m];
+  pass.trend = d * (s.ema20[i] - s.ema50[i]) > 0;
+  pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
+  pass.hours = inHours(s, i);
+  const entry = s.c[i];
+  const stop = (d === 1 ? s.l[k] : s.h[k]) - d * 0.1 * a;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  return finish(
+    'inside',
+    d,
+    i,
+    pass.trigger && pass.inside,
+    pass,
+    entry,
+    stop,
+    {
+      points: [
+        { i: m, label: 'Mother', above: d === -1 },
+        { i: k, label: 'Inside', above: d === 1 },
+      ],
+    },
+    info,
+  );
+}
+
+// ---------------------------------------------------------------- Pin Bar Rejection
+
+export function evalPin(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  const span = s.h[i] - s.l[i];
+  const body = Math.abs(s.c[i] - s.o[i]);
+  const wick = d === 1 ? Math.min(s.o[i], s.c[i]) - s.l[i] : s.h[i] - Math.max(s.o[i], s.c[i]);
+  const closePos = span > 0 ? (s.c[i] - s.l[i]) / span : 0.5;
+  info.wick = span > 0 ? wick / span : 0;
+  info.wickBody = body > 0 ? wick / body : 99;
+  pass.trigger = span > 0 && wick >= 2 * body && wick >= 0.6 * span && (d === 1 ? closePos >= 2 / 3 : closePos <= 1 / 3);
+  const tip = d === 1 ? s.l[i] : s.h[i];
+  let lvl = -1;
+  for (let j = i - 200; j <= i - 5; j++) {
+    if (j < 0) continue;
+    const isSwing = d === 1 ? s.pl5[j] : s.ph5[j];
+    const p = d === 1 ? s.l[j] : s.h[j];
+    if (isSwing && Math.abs(p - tip) <= 0.3 * a) lvl = j;
+  }
+  pass.level = lvl >= 0;
+  if (lvl >= 0) info.levelAt = lvl;
+  let lowest = true;
+  for (let j = i - 9; j < i; j++) if (d * ((d === 1 ? s.l[j] : s.h[j]) - tip) <= 0) lowest = false;
+  pass.extreme = lowest;
+  pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
+  pass.hours = inHours(s, i);
+  const entry = s.c[i];
+  const stop = tip - d * 0.1 * a;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  const marks: Marks = lvl >= 0 ? { level: d === 1 ? s.l[lvl] : s.h[lvl], points: [{ i: lvl, label: 'Level', above: d === -1 }] } : {};
+  return finish('pin', d, i, pass.trigger, pass, entry, stop, marks, info);
+}
+
+// ---------------------------------------------------------------- NY Open Breakout
+
+/** US daylight saving: second Sunday of March to first Sunday of November. */
+export function usDst(t: number): boolean {
+  const d = new Date(t * 1000);
+  const y = d.getUTCFullYear();
+  const nthSunday = (month: number, n: number) => {
+    const first = new Date(Date.UTC(y, month, 1)).getUTCDay();
+    return Date.UTC(y, month, 1 + ((7 - first) % 7) + 7 * (n - 1), 7) / 1000;
+  };
+  return t >= nthSunday(2, 2) && t < nthSunday(10, 1);
+}
+
+export function evalNyorb(s: Series, i: number, dir: Dir): Evaluation {
+  const d = dir;
+  const a = s.atr[i];
+  const pass: Record<string, boolean> = {};
+  const info: Info = {};
+  const t = s.t[i];
+  const dayStart = Math.floor(t / DAY) * DAY;
+  const open = dayStart + (usDst(t) ? 13.5 : 14.5) * H;
+  const rangeEnd = open + 30 * 60;
+  const entry = s.c[i];
+  const none = () => {
+    pass.size = false;
+    pass.window = false;
+    pass.trigger = false;
+    pass.first = true;
+    pass.htf = true;
+    pass.stop = false;
+    return finish('nyorb', d, i, false, pass, entry, entry - d * a, {}, info);
+  };
+  if (t < rangeEnd || t >= rangeEnd + 3 * H) return none();
+  let hi = -Infinity;
+  let lo = Infinity;
+  let from = -1;
+  let to = -1;
+  for (let j = i; j >= 0 && s.t[j] >= open; j--) {
+    if (s.t[j] < rangeEnd) {
+      hi = Math.max(hi, s.h[j]);
+      lo = Math.min(lo, s.l[j]);
+      if (to < 0) to = j;
+      from = j;
+    }
+  }
+  if (from < 0 || to - from + 1 < 2) return none();
+  info.height = (hi - lo) / a;
+  pass.size = (info.height as number) >= 0.8 && (info.height as number) <= 3;
+  pass.window = t < rangeEnd + 90 * 60;
+  const edge = d === 1 ? hi : lo;
+  pass.trigger = d * (s.c[i] - edge) >= 0.1 * a;
+  let earlier = -1;
+  for (let m = to + 1; m < i && earlier < 0; m++) if (s.c[m] - hi >= 0.1 * s.atr[m] || lo - s.c[m] >= 0.1 * s.atr[m]) earlier = m;
+  pass.first = earlier < 0;
+  if (earlier >= 0) info.earlier = earlier;
+  pass.htf = d * (s.c[i] - s.ema200[i]) > 0;
+  const stop = (hi + lo) / 2;
+  pass.stop = stopFits(s, i, entry, stop, d);
+  return finish('nyorb', d, i, pass.trigger, pass, entry, stop, { rangeHigh: hi, rangeLow: lo, rangeFrom: from, rangeTo: to }, info);
+}
+
 // ----------------------------------------------------------------
 
 const EVAL: Record<SystemId, (s: Series, i: number, d: Dir) => Evaluation> = {
@@ -428,6 +651,12 @@ const EVAL: Record<SystemId, (s: Series, i: number, d: Dir) => Evaluation> = {
   sr: evalSr,
   rsi: evalRsi,
   session: evalSession,
+  bb: evalBb,
+  macd: evalMacd,
+  donchian: evalDonchian,
+  inside: evalInside,
+  pin: evalPin,
+  nyorb: evalNyorb,
 };
 
 export function evaluate(s: Series, i: number, sys: SystemId, dir: Dir): Evaluation | null {

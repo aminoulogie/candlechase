@@ -7,7 +7,7 @@ import { LOTS, money, pnl, riskMoney } from '../../game/account';
 import { getState, lossLimitHit, recordAttempt, recordTrade, useGame } from '../../game/store';
 import { Chart } from '../Chart';
 import type { PriceMark } from '../Chart';
-import { Breakdown, useFocus, dirName, Loading, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, forceFor, useFocus, dirName, Loading, revealLabel, sysName, TopBar, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { cssVar, revealOverlays } from '../overlays';
 import { LimitHit } from './LimitHit';
 import { RoundEnd } from './RoundEnd';
@@ -121,7 +121,7 @@ function PlaceOne({ d, step, total, onExit, onNext }: { d: Drill; step: number; 
     <div className="drill">
       <TopBar title="Place it" step={step} total={total} onExit={onExit} />
       <div className="chart-wrap">
-        {ld ? <Chart s={ld.w.s} upto={upto} digits={digits} showDate={!!result} lines={lines} marks={marks} focus={focus} onTapPrice={tap} /> : <Loading />}
+        {ld ? <Chart s={ld.w.s} upto={upto} digits={digits} showDate={!!result} lines={lines} marks={marks} focus={focus} force={forceFor(d.s)} onTapPrice={tap} /> : <Loading />}
         <div className="chart-label">{result && ld ? revealLabel(ld.w) : 'Tap the chart to place your lines'}</div>
       </div>
       <div className="panel" key={result ? 'after' : 'before'}>

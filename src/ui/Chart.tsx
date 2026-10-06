@@ -1,5 +1,6 @@
 import {
   CandlestickSeries,
+  HistogramSeries,
   createChart,
   createSeriesMarkers,
   CrosshairMode,
@@ -7,7 +8,7 @@ import {
   LineStyle,
 } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, SeriesMarker, Time, UTCTimestamp } from 'lightweight-charts';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { Series } from '../engine/types';
 
 export interface PriceMark {
@@ -40,6 +41,8 @@ interface Props {
   /** highlight these bars (Asian range) */
   shade?: { from: number; to: number; hi: number; lo: number };
   onTapPrice?: (price: number) => void;
+  /** indicators this drill needs on regardless of the toggles */
+  force?: Extra[];
   /** candles an explanation is pointing at */
   focus?: BarMark[];
   /** how many candles before `upto` to show */
@@ -57,7 +60,39 @@ const full = (t: number) =>
 
 const HISTORY = 400;
 
-export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus = [], divergence, shade, onTapPrice, span = 90 }: Props) {
+// Extra indicators the trader can switch on; remembered per device.
+type Extra = 'bb' | 'macd';
+const EXTRA_KEY = 'candlechase:indicators';
+let extras: Record<Extra, boolean> = (() => {
+  try {
+    return { bb: false, macd: false, ...JSON.parse(localStorage.getItem(EXTRA_KEY) ?? '{}') };
+  } catch {
+    return { bb: false, macd: false };
+  }
+})();
+const extraListeners = new Set<() => void>();
+function toggleExtra(k: Extra) {
+  extras = { ...extras, [k]: !extras[k] };
+  try {
+    localStorage.setItem(EXTRA_KEY, JSON.stringify(extras));
+  } catch {
+    // not saved; still works for this session
+  }
+  extraListeners.forEach((l) => l());
+}
+const useExtras = () =>
+  useSyncExternalStore(
+    (l) => {
+      extraListeners.add(l);
+      return () => extraListeners.delete(l);
+    },
+    () => extras,
+  );
+
+export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus = [], divergence, shade, onTapPrice, force = [], span = 90 }: Props) {
+  const ex = useExtras();
+  const showBb = ex.bb || force.includes('bb');
+  const showMacd = ex.macd || force.includes('macd');
   const box = useRef<HTMLDivElement>(null);
   const api = useRef<{
     chart: IChartApi;
@@ -65,6 +100,10 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus
     e20: ISeriesApi<'Line'>;
     e50: ISeriesApi<'Line'>;
     e200: ISeriesApi<'Line'>;
+    bbUp: ISeriesApi<'Line'>;
+    bbLo: ISeriesApi<'Line'>;
+    bbMid: ISeriesApi<'Line'>;
+    macd: { line: ISeriesApi<'Line'>; sig: ISeriesApi<'Line'>; hist: ISeriesApi<'Histogram'> } | null;
     rsi: ISeriesApi<'Line'>;
     divPrice: ISeriesApi<'Line'>;
     divRsi: ISeriesApi<'Line'>;
@@ -113,6 +152,9 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus
     const e20 = line(css('--ema20'), 2);
     const e50 = line(css('--ema50'), 2);
     const e200 = line(css('--ema200'), 1, LineStyle.Dashed);
+    const bbUp = line(css('--bb'), 1);
+    const bbLo = line(css('--bb'), 1);
+    const bbMid = line(css('--bb'), 1, LineStyle.Dotted);
     const shadeHi = line(css('--sys-session'), 2);
     const shadeLo = line(css('--sys-session'), 2);
     const divPrice = line(css('--text'), 2, LineStyle.Dashed);
@@ -130,7 +172,7 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus
       const price = candles.coordinateToPrice(p.point.y);
       if (price !== null) tapRef.current(price);
     });
-    api.current = { chart, candles, e20, e50, e200, rsi, divPrice, divRsi, shadeHi, shadeLo, markers, priceLines: [] };
+    api.current = { chart, candles, e20, e50, e200, bbUp, bbLo, bbMid, macd: null, rsi, divPrice, divRsi, shadeHi, shadeLo, markers, priceLines: [] };
     return () => {
       chart.remove();
       api.current = null;
@@ -159,8 +201,46 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus
     a.e20.setData(l20);
     a.e50.setData(l50);
     a.e200.setData(l200);
+    const band = (arr: number[]) => {
+      const out = [];
+      if (showBb) for (let i = from; i <= upto && i < s.t.length; i++) if (!Number.isNaN(arr[i])) out.push({ time: t(i), value: arr[i] });
+      return out;
+    };
+    a.bbUp.setData(band(s.bbUp));
+    a.bbLo.setData(band(s.bbLo));
+    a.bbMid.setData(band(s.bbMid));
+    if (showMacd && !a.macd) {
+      const pf = { type: 'price' as const, precision: digits + 1, minMove: 1 / 10 ** (digits + 1) };
+      const hist = a.chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: pf }, 2);
+      const lineS = a.chart.addSeries(LineSeries, { color: css('--ema20'), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: pf }, 2);
+      const sig = a.chart.addSeries(LineSeries, { color: css('--ema50'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: pf }, 2);
+      a.chart.panes()[2]?.setStretchFactor(1);
+      a.macd = { line: lineS, sig, hist };
+    } else if (!showMacd && a.macd) {
+      a.chart.removeSeries(a.macd.hist);
+      a.chart.removeSeries(a.macd.line);
+      a.chart.removeSeries(a.macd.sig);
+      a.macd = null;
+    }
+    if (a.macd) {
+      const ml = [];
+      const sl = [];
+      const hl = [];
+      const up = css('--up');
+      const down = css('--down');
+      for (let i = from; i <= upto && i < s.t.length; i++) {
+        if (Number.isNaN(s.macdSig[i])) continue;
+        ml.push({ time: t(i), value: s.macd[i] });
+        sl.push({ time: t(i), value: s.macdSig[i] });
+        const h = s.macd[i] - s.macdSig[i];
+        hl.push({ time: t(i), value: h, color: h >= 0 ? up : down });
+      }
+      a.macd.line.setData(ml);
+      a.macd.sig.setData(sl);
+      a.macd.hist.setData(hl);
+    }
     a.rsi.setData(r);
-  }, [s, upto]);
+  }, [s, upto, showBb, showMacd, digits]);
 
   // keep the newest candle in view, keeping whatever zoom the user chose
   const lastUpto = useRef(-1);
@@ -227,5 +307,16 @@ export function Chart({ s, upto, digits, showDate, lines = [], marks = [], focus
     }
   }, [s, upto, lines, marks, focus, divergence, shade]);
 
-  return <div className="chart-box" ref={box} />;
+  return (
+    <>
+      <div className="chart-box" ref={box} />
+      <div className="ind-toggles">
+        {(['bb', 'macd'] as Extra[]).map((k) => (
+          <button key={k} className={(k === 'bb' ? showBb : showMacd) ? 'ind on' : 'ind'} onClick={() => toggleExtra(k)} disabled={force.includes(k)}>
+            {k === 'bb' ? 'BB' : 'MACD'}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 }

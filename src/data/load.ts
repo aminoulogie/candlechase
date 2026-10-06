@@ -63,3 +63,20 @@ export async function loadWindow(x: string, i: number): Promise<Window> {
   const w = windowSeries(concatBars(parts), i - base);
   return { s: w.s, offset: base + w.offset, li: i - base - w.offset, x, digits: meta.digits };
 }
+
+const full = new Map<string, Promise<Bars>>();
+
+/** Every candle of an instrument (for the Lab). */
+export function loadAll(x: string): Promise<Bars> {
+  if (!full.has(x)) {
+    const p = loadLibrary().then(async ({ manifest }) => {
+      const meta = manifest.instruments[x];
+      const parts: Bars[] = [];
+      for (let k = 0; k < meta.chunks; k++) parts.push(await loadChunk(x, k, meta.digits));
+      return concatBars(parts);
+    });
+    p.catch(() => full.delete(x));
+    full.set(x, p);
+  }
+  return full.get(x)!;
+}

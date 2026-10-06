@@ -5,7 +5,7 @@ import type { SystemId } from '../../engine/types';
 import { timerFor, unlockedSystems } from '../../game/progress';
 import { getState, recordAttempt } from '../../game/store';
 import { Chart } from '../Chart';
-import { Breakdown, useFocus, dirName, Loading, nearestAt, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
+import { Breakdown, forceFor, useFocus, dirName, Loading, nearestAt, OutcomeLine, revealLabel, sysName, TopBar, useCountdown, useDrill, usePlayForward, usePracticeClock } from '../common';
 import { revealOverlays } from '../overlays';
 import { RoundEnd } from './RoundEnd';
 
@@ -91,7 +91,7 @@ function SpotOne({ d, title, step, total, onExit, onNext }: { d: Drill; title: s
       />
       <div className="chart-wrap">
         {ld ? (
-          <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} />
+          <Chart s={ld.w.s} upto={upto} digits={ld.w.digits} showDate={revealed} {...(ov ?? {})} focus={focus} force={revealed ? forceFor(d.s) : []} />
         ) : (
           <Loading />
         )}

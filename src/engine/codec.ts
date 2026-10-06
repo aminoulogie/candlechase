@@ -1,3 +1,4 @@
+import type { StatBlock } from './backtest';
 import type { Bars } from './types';
 
 // Candles are shipped as small JSON chunks: times as minute gaps, prices as
@@ -98,24 +99,29 @@ export interface DrillFile {
 
 export interface BacktestRow {
   sys: string;
+  /** instrument id, or 'all' for the three markets together */
   x: string;
-  trades: number;
-  wins: number;
-  losses: number;
-  open: number;
-  winRate: number;
-  avgR: number;
-  totalR: number;
-  profitFactor: number;
-  maxLosingStreak: number;
-  /** cumulative net R sampled for a sparkline */
-  curve: number[];
-  byYear: Record<string, { trades: number; totalR: number }>;
+  /** how many times the setup appeared (valid on a closed candle) */
+  seen: number;
+  /** at the standard 2R target */
+  main: StatBlock & {
+    /** cumulative net R, sampled for a sparkline */
+    curve: number[];
+    byYear: Record<string, { trades: number; wins: number; totalR: number }>;
+    long: StatBlock;
+    short: StatBlock;
+  };
+  /** the same trades with other targets: '1', '1.5', '2', '3' */
+  byTarget: Record<string, StatBlock>;
+  /** before 2025 vs 2025 onward */
+  early: StatBlock;
+  recent: StatBlock;
 }
 
 export interface BacktestFile {
   generated: string;
   from: string;
   to: string;
+  split: string;
   rows: BacktestRow[];
 }

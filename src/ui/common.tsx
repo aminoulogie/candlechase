@@ -281,3 +281,6 @@ export function ConfirmButton({ className, label, confirmLabel, onConfirm }: { c
     </button>
   );
 }
+
+/** Indicators a system needs on the chart to be judged at all. */
+export const forceFor = (sys?: string): ('bb' | 'macd')[] => (sys === 'bb' ? ['bb'] : sys === 'macd' ? ['macd'] : []);

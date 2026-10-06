@@ -9,10 +9,11 @@ export function Rules() {
   return (
     <div className="screen">
       <h1 className="screen-title">Rulebook</h1>
-      <div className="seg">
-        {SYSTEM_ORDER.map((s) => (
-          <button key={s} className={s === sys ? 'seg-btn on' : 'seg-btn'} onClick={() => setSys(s)}>
-            {SYSTEMS[s].name.replace(' Breakout', '').replace(' Divergence', ' Div')}
+      <div className="chip-row">
+        {SYSTEM_ORDER.map((s, k) => (
+          <button key={s} className={s === sys ? 'chip on' : 'chip'} onClick={() => setSys(s)}>
+            {k < 4 ? '' : '+ '}
+            {SYSTEMS[s].name}
           </button>
         ))}
       </div>
@@ -41,7 +42,9 @@ export function Rules() {
         <p className="hint">
           {sys === 'ema'
             ? 'Rules 1–8 are your checklist, word for word. The three “extra” rules are additions from the review of your system: a bigger-trend filter (EMA200), London/New York hours only, and a fixed place for the stop. They are graded like the others.'
-            : 'Drafted in the same style as your EMA checklist. Every drill uses exactly these numbers.'}
+            : SYSTEM_ORDER.indexOf(sys) < 4
+              ? 'Drafted in the same style as your EMA checklist. Every drill uses exactly these numbers.'
+              : 'One of the six systems added for comparison (marked +). Same style, same grading, and the same 5-year test in the Odds tab.'}
         </p>
       </section>
     </div>

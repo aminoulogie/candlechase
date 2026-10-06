@@ -78,10 +78,57 @@ export function pivots(b: Bars, k: number): { ph: Uint8Array; pl: Uint8Array } {
   return { ph, pl };
 }
 
+/** Bollinger Bands: n-period SMA ± k standard deviations of the close. */
+export function bollinger(c: number[], n = 20, k = 2): { mid: number[]; up: number[]; lo: number[] } {
+  const len = c.length;
+  const mid = new Array<number>(len).fill(NaN);
+  const up = new Array<number>(len).fill(NaN);
+  const lo = new Array<number>(len).fill(NaN);
+  let sum = 0;
+  let sq = 0;
+  for (let i = 0; i < len; i++) {
+    sum += c[i];
+    sq += c[i] * c[i];
+    if (i >= n) {
+      sum -= c[i - n];
+      sq -= c[i - n] * c[i - n];
+    }
+    if (i >= n - 1) {
+      const m = sum / n;
+      const sd = Math.sqrt(Math.max(0, sq / n - m * m));
+      mid[i] = m;
+      up[i] = m + k * sd;
+      lo[i] = m - k * sd;
+    }
+  }
+  return { mid, up, lo };
+}
+
+/** MACD line (fast EMA − slow EMA) and its signal EMA. */
+export function macd(c: number[], fast = 12, slow = 26, sig = 9): { line: number[]; signal: number[] } {
+  const f = ema(c, fast);
+  const s = ema(c, slow);
+  const line = c.map((_, i) => f[i] - s[i]);
+  const start = line.findIndex((v) => !Number.isNaN(v));
+  const signal = new Array<number>(c.length).fill(NaN);
+  if (start >= 0) {
+    const tail = ema(line.slice(start), sig);
+    for (let i = 0; i < tail.length; i++) signal[start + i] = tail[i];
+  }
+  return { line, signal };
+}
+
 export function buildSeries(b: Bars): Series {
   const p2 = pivots(b, 2);
   const p5 = pivots(b, 5);
+  const bb = bollinger(b.c);
+  const m = macd(b.c);
   return {
+    bbMid: bb.mid,
+    bbUp: bb.up,
+    bbLo: bb.lo,
+    macd: m.line,
+    macdSig: m.signal,
     ...b,
     ema20: ema(b.c, 20),
     ema50: ema(b.c, 50),
